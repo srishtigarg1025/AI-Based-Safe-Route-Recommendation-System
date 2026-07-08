@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useRef } from "react"
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react"
 import { motion, AnimatePresence } from "motion/react"
 import { Toaster, toast } from "sonner"
 import {
@@ -12,6 +12,17 @@ import {
   AreaChart, Area, BarChart, Bar, XAxis, YAxis,
   CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts"
+import MapView from "./components/MapView"
+
+const API_BASE = ""
+
+interface RouteData {
+  key: "safe" | "moderate" | "risky"
+  label: string
+  distance: string
+  duration: string
+  coords: [number, number][]  
+}
 
 // ─── CSS injected animations ───────────────────────────────────────────────
 const ANIM_CSS = `
@@ -1062,26 +1073,50 @@ export default function App() {
   const [aiOpen, setAIOpen] = useState(true)
   const [notif,  setNotif]  = useState(false)
   const [voice,  setVoice]  = useState(false)
+  const [routes, setRoutes] = useState<RouteData[]>([])
+  const [sourceCoords, setSourceCoords] = useState<[number, number] | null>(null)
+  const [destCoords, setDestCoords] = useState<[number, number] | null>(null)
 
   useLayoutEffect(() => {
     document.documentElement.classList.toggle("dark", isDark)
   }, [isDark])
 
-  const analyze = () => {
+  const analyze = useCallback(async () => {
     if (!source.trim() || !dest.trim()) {
       toast.error("Please enter both source and destination")
       return
     }
     setBusy(true)
     setReady(false)
-    toast.loading("Running ML analysis & route scoring…", { id: "analyze" })
-    setTimeout(() => {
+    setRoutes([])
+    setSourceCoords(null)
+    setDestCoords(null)
+    toast.loading("Fetching routes & running ML analysis…", { id: "analyze" })
+    try {
+      const res = await fetch(`${API_BASE}/api/routes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source, destination: dest }),
+      })
+      if (!res.ok) throw new Error("Routing API error")
+      const data = await res.json()
+      if (!data.routes || data.routes.length === 0) {
+        throw new Error("No routes found")
+      }
+      setRoutes(data.routes)
+      setSourceCoords(data.sourceCoords)
+      setDestCoords(data.destCoords)
+      setSel("safe")
       setBusy(false)
       setReady(true)
       setAIOpen(true)
-      toast.success("Analysis complete — Northern Bypass recommended!", { id: "analyze" })
-    }, 3200)
-  }
+      toast.success(`Found ${data.routes.length} routes — safest recommended!`, { id: "analyze" })
+    } catch (err) {
+      setBusy(false)
+      toast.error("Failed to fetch routes. Is the backend running?", { id: "analyze" })
+      console.error(err)
+    }
+  }, [source, dest])
 
   const travelModes: { key: TravelMode; Icon: typeof Car; label: string }[] = [
     { key: "car",     Icon: Car,   label: "Car" },
@@ -1305,7 +1340,16 @@ export default function App() {
                 )}
               </AnimatePresence>
 
-              <SVGMap sel={sel} setSel={setSel} ready={ready} isDark={isDark} />
+              <MapView
+                source={source}
+                destination={dest}
+                ready={ready}
+                routes={routes}
+                selected={sel}
+                onSelect={setSel}
+                sourceCoords={sourceCoords}
+                destCoords={destCoords}
+              />
             </Glass>
           </div>
 
