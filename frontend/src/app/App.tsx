@@ -13,6 +13,7 @@ import {
   CartesianGrid, Tooltip, ResponsiveContainer, Cell,
 } from "recharts"
 import MapView from "./components/MapView"
+import RouteDetailsCard from "./components/RouteDetailsCard"
 
 const API_BASE = ""
 
@@ -21,7 +22,22 @@ interface RouteData {
   label: string
   distance: string
   duration: string
-  coords: [number, number][]  
+  coords: [number, number][]
+  details?: {
+    roadSegments: { road: string; distance: string; type: string; lanes: number }[]
+    trafficSignals: number
+    totalSteps: number
+  }
+}
+
+interface WeatherData {
+  temperature: number
+  feelsLike: number
+  humidity: number
+  precipitation: number
+  windSpeed: number
+  condition: string
+  icon: string
 }
 
 // ─── CSS injected animations ───────────────────────────────────────────────
@@ -1076,10 +1092,28 @@ export default function App() {
   const [routes, setRoutes] = useState<RouteData[]>([])
   const [sourceCoords, setSourceCoords] = useState<[number, number] | null>(null)
   const [destCoords, setDestCoords] = useState<[number, number] | null>(null)
+  const [calendar, setCalendar] = useState<{ date: string; dayOfWeek: string; isWeekend: boolean } | null>(null)
+  const [weather, setWeather] = useState<WeatherData | null>(null)
+  const [mapResetKey, setMapResetKey] = useState(0)
 
   useLayoutEffect(() => {
     document.documentElement.classList.toggle("dark", isDark)
   }, [isDark])
+
+  useEffect(() => {
+    fetch(`${API_BASE}/api/calendar`)
+      .then(r => r.json())
+      .then(setCalendar)
+      .catch(() => {
+        const now = new Date()
+        const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+        setCalendar({
+          date: now.toISOString().slice(0, 10),
+          dayOfWeek: days[now.getDay()],
+          isWeekend: now.getDay() === 0 || now.getDay() === 6,
+        })
+      })
+  }, [])
 
   const analyze = useCallback(async () => {
     if (!source.trim() || !dest.trim()) {
@@ -1091,6 +1125,7 @@ export default function App() {
     setRoutes([])
     setSourceCoords(null)
     setDestCoords(null)
+    setWeather(null)
     toast.loading("Fetching routes & running ML analysis…", { id: "analyze" })
     try {
       const res = await fetch(`${API_BASE}/api/routes`, {
@@ -1106,6 +1141,7 @@ export default function App() {
       setRoutes(data.routes)
       setSourceCoords(data.sourceCoords)
       setDestCoords(data.destCoords)
+      setWeather(data.weather?.destination || data.weather?.path || null)
       setSel("safe")
       setBusy(false)
       setReady(true)
@@ -1125,11 +1161,14 @@ export default function App() {
     { key: "walk",    Icon: Bus,   label: "Walk" },
   ]
 
+  const selectedRoute = routes.find(r => r.key === sel) || null
+
   const cards = [
-    { id: "cmp", title: "Route Comparison",   Icon: Route,        accent: "#3b82f6", content: <RouteComparisonCard sel={sel} ready={ready} /> },
-    { id: "ml",  title: "ML Prediction",       Icon: Brain,        accent: "#8b5cf6", content: <MLPredictionCard ready={ready} /> },
+    { id: "cmp", title: "Route Comparison",     Icon: Route,        accent: "#3b82f6", content: <RouteComparisonCard sel={sel} ready={ready} /> },
+    { id: "ml",  title: "ML Prediction",         Icon: Brain,        accent: "#8b5cf6", content: <MLPredictionCard ready={ready} /> },
     { id: "sc",  title: "Scenario Simulator",   Icon: Zap,          accent: "#f59e0b", content: <ScenarioCard ready={ready} /> },
-    { id: "an",  title: "Analytics",            Icon: BarChart2,    accent: "#22c55e", content: <AnalyticsCard /> },
+    { id: "an",  title: "Analytics",             Icon: BarChart2,    accent: "#22c55e", content: <AnalyticsCard /> },
+    { id: "rd",  title: "Route Details",         Icon: Map,          accent: "#06b6d4", content: <RouteDetailsCard route={selectedRoute} ready={ready} source={source} destination={dest} sourceCoords={sourceCoords} destCoords={destCoords} /> },
   ]
 
   const bgStyle = {
@@ -1172,6 +1211,21 @@ export default function App() {
           </div>
 
           <div className="flex items-center gap-2">
+            {calendar && (
+              <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-medium"
+                style={{
+                  background: calendar.isWeekend ? "rgba(245,158,11,0.12)" : "rgba(59,130,246,0.08)",
+                  border: `1px solid ${calendar.isWeekend ? "rgba(245,158,11,0.2)" : "rgba(59,130,246,0.15)"}`,
+                  color: calendar.isWeekend ? "#f59e0b" : "var(--txt-secondary)",
+                }}>
+                <span className="font-semibold">{calendar.date}</span>
+                <span style={{ opacity: 0.5 }}>·</span>
+                <span>{calendar.dayOfWeek}</span>
+                {calendar.isWeekend && (
+                  <span className="text-[9px] text-amber-400 font-bold ml-0.5">(Weekend)</span>
+                )}
+              </div>
+            )}
             <Chip color="green">
               <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
               Live
@@ -1237,15 +1291,36 @@ export default function App() {
             {/* Weather */}
             <div>
               <label className="block text-[10px] font-bold uppercase tracking-wider mb-1.5" style={{ color: "var(--txt-muted)" }}>Weather</label>
-              <div className="relative">
-                <Cloud className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-sky-400" />
-                <select className="input-field appearance-none">
-                  <option value="auto">Auto-detect</option>
-                  <option value="clear">Clear</option>
-                  <option value="rain">Rain</option>
-                  <option value="fog">Fog</option>
-                  <option value="storm">Storm</option>
-                </select>
+              <div className="relative h-[38px] flex items-center">
+                {weather ? (
+                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl w-full text-xs"
+                    style={{
+                      background: "var(--glass-bg)",
+                      border: "1px solid var(--glass-border)",
+                      color: "var(--txt-secondary)",
+                    }}>
+                    <Cloud className="w-3.5 h-3.5 text-sky-400 flex-shrink-0" />
+                    <span className="font-medium">{weather.condition}</span>
+                    <span style={{ opacity: 0.5 }}>·</span>
+                    <span className="mono">{weather.temperature}°C</span>
+                    {weather.humidity > 0 && (
+                      <>
+                        <span style={{ opacity: 0.3 }}>|</span>
+                        <span className="text-[10px]" style={{ opacity: 0.6 }}>{weather.humidity}% RH</span>
+                      </>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl w-full text-xs"
+                    style={{
+                      background: "var(--glass-bg)",
+                      border: "1px solid var(--glass-border)",
+                      color: "var(--txt-muted)",
+                    }}>
+                    <Cloud className="w-3.5 h-3.5 flex-shrink-0" />
+                    <span>Auto-detected after analysis</span>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -1271,7 +1346,7 @@ export default function App() {
 
             <div className="sm:ml-auto flex gap-2">
               <button
-                onClick={() => { setSource(""); setDest(""); setReady(false) }}
+                onClick={() => { setSource(""); setDest(""); setReady(false); setWeather(null) }}
                 className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-sm transition-all"
                 style={{ background: "var(--glass-bg)", border: "1px solid var(--glass-border)", color: "var(--txt-muted)" }}>
                 <RefreshCw className="w-4 h-4" />
@@ -1309,8 +1384,7 @@ export default function App() {
               {/* Map controls */}
               <div className="absolute top-3 left-3 z-10 flex flex-col gap-2">
                 {[
-                  { Icon: Crosshair, color: "text-blue-400",  tip: "Current Location", action: () => toast.success("Location detected: Connaught Place, New Delhi") },
-                  { Icon: RefreshCw, color: "text-green-400", tip: "Recalculate", action: () => ready ? toast.success("Route recalculated — 4 min improvement found!") : toast.error("Analyze a route first") },
+                  { Icon: RefreshCw, color: "text-green-400", tip: "Reset Map View", action: () => setMapResetKey(k => k + 1) },
                   { Icon: Brain,     color: "text-purple-400",tip: "AI Panel", action: () => setAIOpen(o => !o) },
                 ].map(({ Icon, color, tip, action }) => (
                   <button key={tip} onClick={action} title={tip}
@@ -1328,14 +1402,18 @@ export default function App() {
                     initial={{ opacity: 0, x: 16 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 16 }}
                     className="absolute top-3 right-3 z-10 p-3 rounded-xl"
                     style={{ background: "rgba(8,13,28,0.82)", backdropFilter: "blur(12px)", border: "1px solid rgba(255,255,255,0.12)" }}>
-                    {(["safe", "moderate", "risky"] as RouteKey[]).map(k => (
-                      <button key={k} onClick={() => setSel(k)}
-                        className="flex items-center gap-2 py-1 transition-all"
-                        style={{ opacity: sel === k ? 1 : 0.45 }}>
-                        <div className="w-5 h-1.5 rounded-full" style={{ background: ROUTES[k].color }} />
-                        <span className="text-[10px] font-medium" style={{ color: "rgba(255,255,255,0.75)" }}>{ROUTES[k].label}</span>
-                      </button>
-                    ))}
+                    {(["safe", "moderate", "risky"] as RouteKey[]).map(k => {
+                      const r = routes.find(rr => rr.key === k)
+                      if (!r) return null
+                      return (
+                        <button key={k} onClick={() => setSel(k)}
+                          className="flex items-center gap-2 py-1 transition-all w-full"
+                          style={{ opacity: sel === k ? 1 : 0.45 }}>
+                          <div className="w-5 h-1.5 rounded-full" style={{ background: ROUTES[k].color }} />
+                          <span className="text-[10px] font-medium text-left" style={{ color: "rgba(255,255,255,0.75)" }}>{r.label}</span>
+                        </button>
+                      )
+                    })}
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -1349,6 +1427,7 @@ export default function App() {
                 onSelect={setSel}
                 sourceCoords={sourceCoords}
                 destCoords={destCoords}
+                resetKey={mapResetKey}
               />
             </Glass>
           </div>

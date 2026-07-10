@@ -3,8 +3,6 @@ import { MapContainer, TileLayer, Marker, Polyline, Popup, useMap } from "react-
 import L from "leaflet"
 import "leaflet/dist/leaflet.css"
 
-const API_BASE = "http://localhost:3001"
-
 const DefaultIcon = L.icon({
   iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
   iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
@@ -48,12 +46,14 @@ interface MapViewProps {
   onSelect: (key: RouteKey) => void
   sourceCoords: [number, number] | null
   destCoords: [number, number] | null
+  resetKey?: number
 }
 
-function FitBounds({ routes, sourceCoords, destCoords }: {
+function FitBounds({ routes, sourceCoords, destCoords, resetKey }: {
   routes: RouteData[]
   sourceCoords: [number, number] | null
   destCoords: [number, number] | null
+  resetKey?: number
 }) {
   const map = useMap()
   useEffect(() => {
@@ -69,11 +69,11 @@ function FitBounds({ routes, sourceCoords, destCoords }: {
       const bounds = L.latLngBounds(points.map(p => L.latLng(p[1], p[0])))
       map.fitBounds(bounds, { padding: [50, 50] })
     }
-  }, [routes, sourceCoords, destCoords, map])
+  }, [routes, sourceCoords, destCoords, resetKey, map])
   return null
 }
 
-export default function MapView({ source, destination, ready, routes, selected, onSelect, sourceCoords, destCoords }: MapViewProps) {
+export default function MapView({ source, destination, ready, routes, selected, onSelect, sourceCoords, destCoords, resetKey }: MapViewProps) {
   return (
     <div className="relative w-full h-full rounded-2xl overflow-hidden" style={{ minHeight: 420 }}>
       <MapContainer
@@ -86,7 +86,7 @@ export default function MapView({ source, destination, ready, routes, selected, 
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        <FitBounds routes={routes} sourceCoords={sourceCoords} destCoords={destCoords} />
+        <FitBounds routes={routes} sourceCoords={sourceCoords} destCoords={destCoords} resetKey={resetKey} />
 
         {routes.map((route) => {
           const coords: [number, number][] = route.coords.map(c => [c[1], c[0]])
