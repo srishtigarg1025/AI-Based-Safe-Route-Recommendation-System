@@ -56,14 +56,14 @@ predicted_risk = predict_risk(route_features)
 # Step 2 : Count Hotspots
 # -------------------------------------------------
 
-hotspot_count, severity = check_route_hotspots(route_coordinates)
+hotspot_count = check_route_hotspots(route_coordinates)
 
 
 # -------------------------------------------------
 # Step 3 : Adjust Risk
 # -------------------------------------------------
 
-final_risk, penalty = adjust_risk(
+final_risk, penalty, severity = adjust_risk(
     predicted_risk,
     hotspot_count
 )
