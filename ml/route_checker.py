@@ -19,14 +19,8 @@ def check_route_hotspots(route_coordinates):
         if route.distance(hotspot) <= 0.003:
             hotspot_count += 1
 
-    if hotspot_count == 0:
-        severity = "Low"
-    elif hotspot_count <= 3:
-        severity = "Medium"
-    else:
-        severity = "High"
 
-    return hotspot_count, severity
+    return hotspot_count
 
 
 if __name__ == "__main__":
