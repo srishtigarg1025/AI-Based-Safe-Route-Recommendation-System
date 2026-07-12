@@ -4,7 +4,7 @@ import pandas as pd
 from sklearn.cluster import DBSCAN
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATA_PATH = os.path.join(BASE_DIR, "data", "indian_roads_dataset.csv")
+DATA_PATH = os.path.join(BASE_DIR, "dataset", "indian_roads_dataset.csv")
 df = pd.read_csv(DATA_PATH)
 
 coordinates = df[["latitude", "longitude"]].copy()
