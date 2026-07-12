@@ -6,7 +6,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 HOTSPOT_PATH = os.path.join(BASE_DIR, "outputs", "hotspots.csv")
 
 
-def check_route_hotspots(route_coordinates):
+def check_route_hotspots(route_coordinates: list[tuple[float, float]]) -> int:
     hotspots = pd.read_csv(HOTSPOT_PATH)
 
     # Convert (lat, lon) -> (lon, lat) for Shapely
@@ -33,7 +33,5 @@ if __name__ == "__main__":
         (28.6300, 77.2400)
     ]
 
-    hotspot_count, severity = check_route_hotspots(route)
-
+    hotspot_count = check_route_hotspots(route)
     print("Hotspots Found :", hotspot_count)
-    print("Severity :", severity)
