@@ -1,5 +1,14 @@
 import express from "express"
 import cors from "cors"
+import axios from "axios"
+import dotenv from "dotenv"
+
+dotenv.config()
+
+const ML_API =
+    process.env.ML_API_URL ||
+    "http://localhost:8000"
+
 
 const app = express()
 app.use(cors())
@@ -166,13 +175,107 @@ app.post("/api/routes", async (req, res) => {
     } catch (_) {
       console.warn("Weather fetch failed, continuing without weather data")
     }
+    
+// --------------------------------------------------
+// Prepare ML Input
+// --------------------------------------------------
 
-    res.json({
-      sourceCoords: srcCoords,
-      destCoords: dstCoords,
-      routes: routeResults,
-      weather,
-    })
+
+    const firstRoute = routeResults[0];
+    
+    const now = new Date();
+    const hour = now.getHours();
+    
+    const days = [
+    "Sunday",
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday"
+  ];
+  const dayOfWeek = days[now.getDay()];
+  const isWeekend =
+    now.getDay() === 0 || now.getDay() === 6 ? 1 : 0;
+  const isPeakHour =
+    (hour >= 8 && hour <= 10) ||
+    (hour >= 17 && hour <= 20)
+        ? 1
+        : 0;
+  const condition =
+    weather?.path?.condition?.toLowerCase() || "";
+    
+  const visibility =
+    condition.includes("fog")
+        ? "low"
+        : "high";
+        
+  const primaryRoad =
+    firstRoute.details.roadSegments[0];
+
+// --------------------------------------------------
+// Build ML Payload
+// --------------------------------------------------
+
+  const mlPayload = {
+
+    day_of_week: dayOfWeek,
+
+    road_type:
+        primaryRoad?.type || "Local",
+
+    weather:
+        weather?.path?.condition || "Clear",
+
+    visibility,
+
+    festival:
+        "No Festival",
+
+    hour,
+
+    is_weekend:
+        isWeekend,
+
+    lanes:
+        primaryRoad?.lanes || 2,
+
+    traffic_signal:
+        firstRoute.details.trafficSignals,
+
+    temperature:
+        weather?.path?.temperature || 30,
+
+    is_peak_hour:
+        isPeakHour,
+
+    route_coordinates:
+
+        firstRoute.coords.map(
+            ([lon, lat]) => [lat, lon]
+        )
+      
+  };
+
+// --------------------------------------------------
+// Call FastAPI
+// --------------------------------------------------
+
+  const mlResponse = await axios.post(
+    `${ML_API}/predict`,
+    mlPayload
+  );
+  
+  console.log(mlResponse.data);
+
+  res.json({
+    sourceCoords: srcCoords,
+    destCoords: dstCoords,
+    routes: routeResults,
+    weather,
+    prediction: mlResponse.data
+  })
   } catch (err) {
     console.error("Routing error:", err)
     res.status(500).json({ error: err.message || "Internal error" })
