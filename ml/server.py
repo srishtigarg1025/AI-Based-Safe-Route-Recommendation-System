@@ -1,5 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+from typing import List
 from fastapi.middleware.cors import CORSMiddleware
 
 from predict import predict_risk
@@ -47,7 +48,7 @@ class RouteRequest(BaseModel):
     temperature: float
     is_peak_hour: int
 
-    route_coordinates: list
+    route_coordinates: List[List[float]]
 
 
 # ----------------------------------------
