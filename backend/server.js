@@ -248,6 +248,7 @@ function mapTrafficSignal(count) {
         ? mapRoadType(segments[0].type)
         : "urban";
       const weightedLanes = segments.reduce((s, seg) => s + (seg.lanes || 2) * (seg.distanceKm || 0), 0) / totalDist;
+      const adj = computeRouteAdjustment(route);
       const mlPayload = {
         day_of_week: dayOfWeek,
         road_type: weightedRoadType,
@@ -262,7 +263,8 @@ function mapTrafficSignal(count) {
         is_peak_hour: isPeakHour,
         route_coordinates: route.coords.map(
           ([lon, lat]) => [lat, lon]
-        )
+        ),
+        adjustment: adj
       };
       try {
         const mlRes = await axios.post(`${ML_API}/predict`, mlPayload);
@@ -298,21 +300,10 @@ function computeRouteAdjustment(route) {
   return adj;
 }
 
-function computeSeverity(risk) {
-  if (risk < 0.35) return "Low";
-  if (risk < 0.65) return "Medium";
-  return "High";
-}
-
-  const routesWithPredictions = routeResults.map((route, i) => {
-    const prediction = routePredictions[i];
-    if (prediction) {
-      const adj = computeRouteAdjustment(route);
-      prediction.final_risk = Math.max(0, Math.min(1, prediction.final_risk + adj));
-      prediction.severity = computeSeverity(prediction.final_risk);
-    }
-    return { ...route, prediction };
-  });
+  const routesWithPredictions = routeResults.map((route, i) => ({
+    ...route,
+    prediction: routePredictions[i]
+  }));
 
   res.json({
     sourceCoords: srcCoords,

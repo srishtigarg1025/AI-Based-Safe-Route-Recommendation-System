@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from predict import predict_risk
 from route_checker import check_route_hotspots
-from risk import adjust_risk
+from risk import adjust_risk, calculate_severity
 from explain_route import explain_route
 
 
@@ -49,6 +49,8 @@ class RouteRequest(BaseModel):
     is_peak_hour: int
 
     route_coordinates: List[List[float]]
+
+    adjustment: float = 0.0
 
 
 # ----------------------------------------
@@ -96,6 +98,10 @@ def predict_route(data: RouteRequest):
             predicted_risk,
             hotspot_count
         )
+
+        # Step 3b – apply per-route adjustment so explanation matches the displayed risk
+        final_risk = max(0.0, min(1.0, final_risk + data.adjustment))
+        severity = calculate_severity(final_risk)
 
         # Step 4
         explanation = explain_route(
