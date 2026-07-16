@@ -141,8 +141,11 @@ app.post("/api/routes", async (req, res) => {
       const roadSegments = [...uniqueRoads.values()]
         .sort((a, b) => b.distance - a.distance)
         .map(s => ({
-          ...s,
+          road: s.road,
           distance: `${(s.distance / 1000).toFixed(1)} km`,
+          distanceKm: parseFloat((s.distance / 1000).toFixed(1)),
+          type: s.type,
+          lanes: s.lanes,
         }))
 
       const trafficSignals = Math.max(allSteps.length - 1, 0)
@@ -151,7 +154,9 @@ app.post("/api/routes", async (req, res) => {
         key: ROUTE_KEYS[i] || "safe",
         label: `${distKm} km · ${durMin} min`,
         distance: `${distKm} km`,
+        distanceKm: parseFloat(distKm),
         duration: `${durMin} min`,
+        durationMin: durMin,
         coords: route.geometry.coordinates,
         details: {
           roadSegments,
@@ -177,12 +182,9 @@ app.post("/api/routes", async (req, res) => {
     }
     
 // --------------------------------------------------
-// Prepare ML Input
+// Prepare ML Input (common fields)
 // --------------------------------------------------
 
-
-    const firstRoute = routeResults[0];
-    
     const now = new Date();
     const hour = now.getHours();
     
@@ -203,78 +205,120 @@ app.post("/api/routes", async (req, res) => {
     (hour >= 17 && hour <= 20)
         ? 1
         : 0;
-  const condition =
-    weather?.path?.condition?.toLowerCase() || "";
+  const rawCondition =
+    (weather?.path?.condition || "").toLowerCase();
     
   const visibility =
-    condition.includes("fog")
+    rawCondition.includes("fog")
         ? "low"
         : "high";
-        
-  const primaryRoad =
-    firstRoute.details.roadSegments[0];
+
+// Map backend road types to model categories: highway, rural, urban
+function mapRoadType(type) {
+  const t = (type || "").toLowerCase();
+  if (t === "highway") return "highway";
+  if (["arterial", "collector", "local"].includes(t)) return "urban";
+  if (t === "flyover") return "highway";
+  return "urban";
+}
+
+// Map weather condition to model categories: clear, fog, rain
+function mapWeather(condition) {
+  const c = (condition || "").toLowerCase();
+  if (c.includes("fog")) return "fog";
+  if (c.includes("rain") || c.includes("drizzle") || c.includes("thunderstorm") || c.includes("snow")) return "rain";
+  return "clear";
+}
+
+// Map traffic signal count to binary 0/1 as model expects
+function mapTrafficSignal(count) {
+  return count > 0 ? 1 : 0;
+}
 
 // --------------------------------------------------
-// Build ML Payload
+// Call FastAPI per route
 // --------------------------------------------------
 
-  const mlPayload = {
-
-    day_of_week: dayOfWeek,
-
-    road_type:
-        primaryRoad?.type || "Local",
-
-    weather:
-        weather?.path?.condition || "Clear",
-
-    visibility,
-
-    festival:
-        "No Festival",
-
-    hour,
-
-    is_weekend:
-        isWeekend,
-
-    lanes:
-        primaryRoad?.lanes || 2,
-
-    traffic_signal:
-        firstRoute.details.trafficSignals,
-
-    temperature:
-        weather?.path?.temperature || 30,
-
-    is_peak_hour:
-        isPeakHour,
-
-    route_coordinates:
-
-        firstRoute.coords.map(
-            ([lon, lat]) => [lat, lon]
+  const routePredictions = await Promise.all(
+    routeResults.map(async (route) => {
+      const segments = route.details.roadSegments || [];
+      // Weighted average by distance – better represents the whole route
+      const totalDist = segments.reduce((s, seg) => s + (seg.distanceKm || 0), 0) || 1;
+      const weightedRoadType = segments.length > 0
+        ? mapRoadType(segments[0].type)
+        : "urban";
+      const weightedLanes = segments.reduce((s, seg) => s + (seg.lanes || 2) * (seg.distanceKm || 0), 0) / totalDist;
+      const mlPayload = {
+        day_of_week: dayOfWeek,
+        road_type: weightedRoadType,
+        weather: mapWeather(weather?.path?.condition),
+        visibility,
+        festival: "No Festival",
+        hour,
+        is_weekend: isWeekend,
+        lanes: Math.round(weightedLanes),
+        traffic_signal: mapTrafficSignal(route.details.trafficSignals),
+        temperature: weather?.path?.temperature || 30,
+        is_peak_hour: isPeakHour,
+        route_coordinates: route.coords.map(
+          ([lon, lat]) => [lat, lon]
         )
-      
-  };
-
-// --------------------------------------------------
-// Call FastAPI
-// --------------------------------------------------
-
-  const mlResponse = await axios.post(
-    `${ML_API}/predict`,
-    mlPayload
+      };
+      try {
+        const mlRes = await axios.post(`${ML_API}/predict`, mlPayload);
+        return mlRes.data;
+      } catch (e) {
+        console.warn(`ML prediction failed for route ${route.key}: ${e.message}`);
+        return null;
+      }
+    })
   );
-  
-  console.log(mlResponse.data);
+
+// Per-route adjustment – amplifies real route differences
+// that the ML model cannot see (highway ratio, segment complexity)
+function computeRouteAdjustment(route) {
+  const distKm = route.distanceKm || 0;
+  const roadSegments = route.details?.roadSegments || [];
+  const trafficSignals = route.details?.trafficSignals || 0;
+
+  let highwayDistKm = 0;
+  for (const s of roadSegments) {
+    const d = s.distanceKm || 0;
+    if (s.type === "Highway" || s.type === "Flyover") highwayDistKm += d;
+  }
+  const highwayRatio = distKm > 0 ? highwayDistKm / distKm : 0;
+  const signalDensity = distKm > 0 ? trafficSignals / distKm : 0;
+  const segmentCount = roadSegments.length;
+
+  let adj = 0;
+  adj -= highwayRatio * 0.06;                    // safer roads
+  adj += Math.min(signalDensity, 0.5) * 0.04;    // intersections
+  adj += Math.min(segmentCount / 20, 0.5) * 0.04; // complexity
+  adj += Math.max(0, (distKm - 50) * 0.0001);    // exposure
+  return adj;
+}
+
+function computeSeverity(risk) {
+  if (risk < 0.35) return "Low";
+  if (risk < 0.65) return "Medium";
+  return "High";
+}
+
+  const routesWithPredictions = routeResults.map((route, i) => {
+    const prediction = routePredictions[i];
+    if (prediction) {
+      const adj = computeRouteAdjustment(route);
+      prediction.final_risk = Math.max(0, Math.min(1, prediction.final_risk + adj));
+      prediction.severity = computeSeverity(prediction.final_risk);
+    }
+    return { ...route, prediction };
+  });
 
   res.json({
     sourceCoords: srcCoords,
     destCoords: dstCoords,
-    routes: routeResults,
+    routes: routesWithPredictions,
     weather,
-    prediction: mlResponse.data
   })
   } catch (err) {
     console.error("Routing error:", err)

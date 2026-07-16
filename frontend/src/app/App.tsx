@@ -3,15 +3,10 @@ import { motion, AnimatePresence } from "motion/react"
 import { Toaster, toast } from "sonner"
 import {
   MapPin, Clock, Cloud, Car, Bike, Train, Bus,
-  AlertTriangle, CheckCircle, Bell, Mic, Phone,
-  RefreshCw, Crosshair, Sun, Moon, Upload, Send,
-  Zap, Shield, Brain, MessageSquare, X, Navigation,
-  Eye, BarChart2, Route, Map, Target,
+  AlertTriangle, CheckCircle,
+  RefreshCw, Sun, Moon, Zap, Brain, X, Navigation,
+  Route, Map, Target,
 } from "lucide-react"
-import {
-  AreaChart, Area, BarChart, Bar, XAxis, YAxis,
-  CartesianGrid, Tooltip, ResponsiveContainer, Cell,
-} from "recharts"
 import MapView from "./components/MapView"
 import RouteDetailsCard from "./components/RouteDetailsCard"
 
@@ -28,6 +23,7 @@ interface RouteData {
     trafficSignals: number
     totalSteps: number
   }
+  prediction?: PredictionResult
 }
 
 interface WeatherData {
@@ -38,6 +34,15 @@ interface WeatherData {
   windSpeed: number
   condition: string
   icon: string
+}
+
+interface PredictionResult {
+  predicted_risk: number
+  hotspot_count: number
+  severity: string
+  penalty: number
+  final_risk: number
+  explanation: string
 }
 
 // ─── CSS injected animations ───────────────────────────────────────────────
@@ -122,95 +127,10 @@ const ANIM_CSS = `
 type RouteKey = "safe" | "moderate" | "risky"
 type TravelMode = "car" | "bike" | "transit" | "walk"
 
-// ─── Constants ──────────────────────────────────────────────────────────────
-const ROUTES: Record<RouteKey, {
-  label: string; color: string; distance: string; eta: string
-  risk: number; roadType: string; accidents: number; riskLabel: string
-  weather: string
-}> = {
-  safe: {
-    label: "Northern Bypass", color: "#22c55e",
-    distance: "14.2 km", eta: "28 min", risk: 12,
-    roadType: "Highway + Arterial", accidents: 2,
-    riskLabel: "Low Risk", weather: "Clear",
-  },
-  moderate: {
-    label: "Ring Road Connector", color: "#f59e0b",
-    distance: "11.7 km", eta: "22 min", risk: 46,
-    roadType: "Mixed Urban", accidents: 7,
-    riskLabel: "Moderate", weather: "Foggy",
-  },
-  risky: {
-    label: "Downtown Direct", color: "#ef4444",
-    distance: "9.4 km", eta: "18 min", risk: 78,
-    roadType: "Inner City Core", accidents: 19,
-    riskLabel: "High Risk", weather: "Congested",
-  },
-}
-
-const AI_EXPLANATION =
-  "Based on real-time traffic patterns, historical accident data for this corridor, current weather conditions (light morning fog, clearing by 09:15), and analysis of 847 similar route scenarios in the ML corpus — the Northern Bypass emerges as the optimal choice. Accident density is 87% lower than the direct route, with zero reported incidents in the past 6 hours. Confidence: 94.7%."
-
-const SAFETY_TIPS = [
-  "Reduce speed near Junction 4B — active fog advisory until 09:15",
-  "School zone at km 6.2: heightened pedestrian activity 08–09 AM",
-  "Construction zone: right lane closure at km 8.4, merge early",
-  "Speed camera at km 11.2 — maintain posted 60 km/h limit",
-]
-
-const NOTIFICATIONS = [
-  { id: 1, type: "warning", text: "Heavy congestion on Inner Ring Road — 40 min delay", time: "2 min ago" },
-  { id: 2, type: "info",    text: "Weather update: light fog clearing by 09:15 AM",       time: "8 min ago" },
-  { id: 3, type: "success", text: "Route recalculated — saving 12 minutes",                time: "15 min ago" },
-  { id: 4, type: "danger",  text: "Accident reported: Sector 14 Bridge — avoid area",     time: "23 min ago" },
-  { id: 5, type: "info",    text: "Road closure: NH-48 maintenance until 10 AM",           time: "1 hr ago" },
-]
-
-const PEAK_DATA = [
-  { h: "6A", v: 4 }, { h: "7A", v: 12 }, { h: "8A", v: 28 }, { h: "9A", v: 19 },
-  { h: "10A", v: 8 }, { h: "11A", v: 6 }, { h: "12P", v: 9 }, { h: "1P", v: 11 },
-  { h: "2P", v: 7 }, { h: "3P", v: 10 }, { h: "4P", v: 17 }, { h: "5P", v: 31 },
-  { h: "6P", v: 34 }, { h: "7P", v: 20 }, { h: "8P", v: 9 },
-]
-
-const TREND_DATA = [
-  { m: "Jan", risk: 68, acc: 42 }, { m: "Feb", risk: 72, acc: 38 },
-  { m: "Mar", risk: 61, acc: 51 }, { m: "Apr", risk: 55, acc: 35 },
-  { m: "May", risk: 48, acc: 29 }, { m: "Jun", risk: 43, acc: 24 },
-  { m: "Jul", risk: 52, acc: 33 },
-]
-
-const FEATURES = [
-  { name: "Time of Day",      val: 92 }, { name: "Weather",         val: 85 },
-  { name: "Road Type",        val: 78 }, { name: "Traffic Density", val: 74 },
-  { name: "Accident History", val: 68 }, { name: "Construction",    val: 45 },
-]
-
-const SCENARIOS = [
-  { icon: "🌧️", label: "Heavy Rain",        delta: +34, desc: "Risk +34% — safe route still optimal but ETA +8 min. Watch for aquaplaning on arterial." },
-  { icon: "🌙", label: "Travel at 11 PM",   delta: -22, desc: "Risk −22% — lower traffic but reduced lighting on bypass. Keep high-beams ready." },
-  { icon: "🚫", label: "Avoid Highways",    delta: +18, desc: "Risk +18% — urban roads with higher pedestrian density and more intersections." },
-  { icon: "⏰", label: "Rush Hour (8 AM)",  delta: +47, desc: "Risk +47% — consider a 30-min delay for optimal safety and 18-min time saving." },
-  { icon: "🌫️", label: "Dense Fog",         delta: +29, desc: "Risk +29% — reduce speed by 20 km/h; follow route guidance closely for best safety." },
-  { icon: "📅", label: "Weekend Travel",    delta: -41, desc: "Risk −41% — significantly fewer vehicles; excellent conditions for this corridor." },
-]
-
-const AI_QUICK_Q = [
-  "Why is the safe route best?",
-  "What if it rains heavily?",
-  "Best time to travel?",
-  "Any alternative routes?",
-]
-
-const AI_RESPONSES: Record<string, string> = {
-  "Why is the safe route best?":
-    "The Northern Bypass scores lowest because it has 87% fewer historical accidents, avoids the congested downtown core, offers wider dual-carriageway lanes with better visibility, and current traffic density is only 23% — well below the risky 65% threshold.",
-  "What if it rains heavily?":
-    "In heavy rain, all route risks rise sharply: Safe → 34, Moderate → 68, Risky → 91. Still recommend the Safe route — but reduce speed by 20 km/h and maintain extra following distance near Junction 4B where standing water is common.",
-  "Best time to travel?":
-    "Optimal windows are 10 AM–12 PM or 2–3:30 PM on weekdays. Saturday mornings (pre-10 AM) offer the best overall conditions. Avoid 7–9 AM and 5–7 PM peak windows for this corridor — risk scores spike by 47% and 38% respectively.",
-  "Any alternative routes?":
-    "Two solid alternatives: (1) Eastern Expressway — adds 6 km but risk score of just 8, fastest right now. (2) Lake Road Bypass — scenic, low traffic, risk 15. Both are viable if you can spare 8–10 extra minutes.",
+const ROUTE_COLORS: Record<string, string> = {
+  safe: "#22c55e",
+  moderate: "#f59e0b",
+  risky: "#ef4444",
 }
 
 // ─── Utilities ──────────────────────────────────────────────────────────────
@@ -308,162 +228,15 @@ function RiskGauge({ value }: { value: number }) {
   )
 }
 
-// ─── SVG Map ────────────────────────────────────────────────────────────────
-function SVGMap({ sel, setSel, ready, isDark }: {
-  sel: RouteKey; setSel: (k: RouteKey) => void; ready: boolean; isDark: boolean
-}) {
-  const st = isDark
-  return (
-    <div className="relative w-full h-full rounded-2xl overflow-hidden" style={{ minHeight: 420 }}>
-      <svg viewBox="0 0 800 480" className="w-full h-full"
-        style={{ background: st ? "#080d1c" : "#dde6f4" }}>
-
-        {/* Street grid */}
-        {Array.from({ length: 13 }).map((_, i) => (
-          <line key={`h${i}`} x1="0" y1={i * 38} x2="800" y2={i * 38}
-            stroke={st ? "rgba(255,255,255,0.035)" : "rgba(0,0,0,0.055)"} strokeWidth="0.6" />
-        ))}
-        {Array.from({ length: 22 }).map((_, i) => (
-          <line key={`v${i}`} x1={i * 37} y1="0" x2={i * 37} y2="480"
-            stroke={st ? "rgba(255,255,255,0.035)" : "rgba(0,0,0,0.055)"} strokeWidth="0.6" />
-        ))}
-
-        {/* Arterials */}
-        <line x1="0" y1="190" x2="800" y2="190" stroke={st ? "rgba(255,255,255,0.09)" : "rgba(0,0,0,0.14)"} strokeWidth="2.5" />
-        <line x1="0" y1="330" x2="800" y2="330" stroke={st ? "rgba(255,255,255,0.09)" : "rgba(0,0,0,0.14)"} strokeWidth="2.5" />
-        <line x1="190" y1="0" x2="190" y2="480" stroke={st ? "rgba(255,255,255,0.09)" : "rgba(0,0,0,0.14)"} strokeWidth="2.5" />
-        <line x1="560" y1="0" x2="560" y2="480" stroke={st ? "rgba(255,255,255,0.09)" : "rgba(0,0,0,0.14)"} strokeWidth="2.5" />
-        <line x1="0" y1="480" x2="800" y2="0" stroke={st ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.08)"} strokeWidth="3" strokeDasharray="6 4" />
-
-        {/* River */}
-        <path d="M 295 0 C 315 70, 275 115, 308 195 C 328 255, 288 295, 318 375 L 358 375 C 328 295, 368 255, 348 195 C 318 115, 358 70, 338 0 Z"
-          fill={st ? "rgba(29,78,216,0.25)" : "rgba(147,197,253,0.45)"} />
-
-        {/* Park */}
-        <rect x="405" y="275" width="98" height="78" rx="10"
-          fill={st ? "rgba(16,85,36,0.28)" : "rgba(134,239,172,0.45)"} />
-        <text x="454" y="320" textAnchor="middle" fontSize="9"
-          fill={st ? "rgba(74,222,128,0.55)" : "rgba(22,163,74,0.7)"}>City Park</text>
-
-        {/* City blocks */}
-        {([
-          [50,50,62,38],[140,65,45,55],[440,55,55,38],[625,75,58,42],
-          [55,245,52,65],[450,175,72,42],[645,245,62,52],
-          [58,355,82,58],[628,358,72,52],[220,245,55,42],[670,145,55,38]
-        ] as number[][]).map(([x,y,w,h], i) => (
-          <rect key={i} x={x} y={y} width={w} height={h} rx="3"
-            fill={st ? "rgba(255,255,255,0.035)" : "rgba(0,0,0,0.065)"}
-            stroke={st ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.1)"} strokeWidth="0.5" />
-        ))}
-
-        {/* Heatmap blobs */}
-        {ready && <>
-          <circle cx="405" cy="308" r="42" fill="rgba(239,68,68,0.11)" />
-          <circle cx="455" cy="225" r="32" fill="rgba(245,158,11,0.09)" />
-          <circle cx="558" cy="348" r="28" fill="rgba(239,68,68,0.13)" />
-          <circle cx="248" cy="152" r="38" fill="rgba(245,158,11,0.07)" />
-          <circle cx="640" cy="272" r="22" fill="rgba(239,68,68,0.10)" />
-        </>}
-
-        {/* Risky route */}
-        {ready && (
-          <g onClick={() => setSel("risky")} style={{ cursor: "pointer" }}>
-            <path
-              d="M 108 402 C 200 402, 315 380, 395 342 C 475 304, 565 258, 628 195 C 658 168, 672 152, 692 132"
-              fill="none" stroke={sel === "risky" ? "#ef4444" : "rgba(239,68,68,0.45)"}
-              strokeWidth={sel === "risky" ? 5.5 : 3}
-              strokeLinecap="round" className="route-draw"
-              style={{ animationDelay: "0.45s", filter: sel === "risky" ? "drop-shadow(0 0 10px #ef4444)" : "none" }}
-            />
-          </g>
-        )}
-
-        {/* Moderate route */}
-        {ready && (
-          <g onClick={() => setSel("moderate")} style={{ cursor: "pointer" }}>
-            <path
-              d="M 108 402 C 160 368, 235 336, 315 302 C 395 268, 478 238, 556 210 C 608 192, 655 162, 692 132"
-              fill="none" stroke={sel === "moderate" ? "#f59e0b" : "rgba(245,158,11,0.45)"}
-              strokeWidth={sel === "moderate" ? 5.5 : 3}
-              strokeLinecap="round" className="route-draw"
-              style={{ animationDelay: "0.22s", filter: sel === "moderate" ? "drop-shadow(0 0 10px #f59e0b)" : "none" }}
-            />
-          </g>
-        )}
-
-        {/* Safe route */}
-        {ready && (
-          <g onClick={() => setSel("safe")} style={{ cursor: "pointer" }}>
-            <path
-              d="M 108 402 C 128 338, 192 298, 262 258 C 332 218, 394 174, 462 152 C 532 132, 614 128, 692 132"
-              fill="none" stroke={sel === "safe" ? "#22c55e" : "rgba(34,197,94,0.45)"}
-              strokeWidth={sel === "safe" ? 5.5 : 3}
-              strokeLinecap="round" className="route-draw"
-              style={{ animationDelay: "0s", filter: sel === "safe" ? "drop-shadow(0 0 10px #22c55e)" : "none" }}
-            />
-          </g>
-        )}
-
-        {/* Origin marker */}
-        {ready && <>
-          <circle cx="108" cy="402" r="16" fill="rgba(59,130,246,0.25)" className="route-pulse" />
-          <circle cx="108" cy="402" r="9" fill="#3b82f6" />
-          <circle cx="108" cy="402" r="3.5" fill="white" />
-          <text x="108" y="428" textAnchor="middle" fontSize="9" fontWeight="600"
-            fill={st ? "rgba(255,255,255,0.65)" : "rgba(0,0,0,0.65)"}>Origin</text>
-        </>}
-
-        {/* Destination marker */}
-        {ready && <>
-          <circle cx="692" cy="132" r="16" fill="rgba(99,102,241,0.25)" className="route-pulse" />
-          <circle cx="692" cy="132" r="9" fill="#6366f1" />
-          <circle cx="692" cy="132" r="3.5" fill="white" />
-          <text x="692" y="114" textAnchor="middle" fontSize="9" fontWeight="600"
-            fill={st ? "rgba(255,255,255,0.65)" : "rgba(0,0,0,0.65)"}>Destination</text>
-        </>}
-
-        {/* Accident pins */}
-        {ready && ([
-          { x: 405, y: 318, hi: true }, { x: 558, y: 228, hi: false }, { x: 465, y: 375, hi: true }
-        ]).map((p, i) => (
-          <g key={i}>
-            <circle cx={p.x} cy={p.y} r="6.5"
-              fill={p.hi ? "rgba(239,68,68,0.92)" : "rgba(245,158,11,0.92)"}
-              stroke="white" strokeWidth="1.5" />
-            <text x={p.x} y={p.y + 4.5} textAnchor="middle" fill="white" fontSize="7" fontWeight="700">!</text>
-          </g>
-        ))}
-
-        {/* Route labels */}
-        {ready && <>
-          <text x="268" y="235" fill="rgba(34,197,94,0.85)" fontSize="9.5" fontWeight="700">Safe Route</text>
-          <text x="318" y="292" fill="rgba(245,158,11,0.85)" fontSize="9.5" fontWeight="700">Moderate</text>
-          <text x="388" y="362" fill="rgba(239,68,68,0.85)" fontSize="9.5" fontWeight="700">High Risk</text>
-        </>}
-
-        {/* Road labels */}
-        <text x="240" y="16" fill={st ? "rgba(255,255,255,0.18)" : "rgba(0,0,0,0.22)"} fontSize="8.5">Outer Ring Road</text>
-        <text x="575" y="16" fill={st ? "rgba(255,255,255,0.18)" : "rgba(0,0,0,0.22)"} fontSize="8.5">NH-48</text>
-        <text x="8" y="186" fill={st ? "rgba(255,255,255,0.18)" : "rgba(0,0,0,0.22)"} fontSize="8.5">MG Road</text>
-      </svg>
-
-      {!ready && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center rounded-2xl"
-          style={{ background: "rgba(0,0,0,0.52)", backdropFilter: "blur(2px)" }}>
-          <Map className="w-12 h-12 mb-3 opacity-30" style={{ color: "var(--txt-muted)" }} />
-          <p className="text-sm" style={{ color: "var(--txt-muted)" }}>Enter route details and click Analyze</p>
-        </div>
-      )}
-    </div>
-  )
-}
-
 // ─── AI Panel ───────────────────────────────────────────────────────────────
-function AIPanel({ sel, ready, onClose }: {
+function AIPanel({ sel, ready, onClose, routes, prediction, weather }: {
   sel: RouteKey; ready: boolean; onClose: () => void
+  routes: RouteData[]; prediction: PredictionResult | null; weather: WeatherData | null
 }) {
-  const r = ROUTES[sel]
-  const explanation = useTypingEffect(AI_EXPLANATION, 18, ready)
+  const p = prediction
+  const explanation = useTypingEffect(p?.explanation || "", 18, ready && !!p?.explanation)
+  const safeRoute = routes.find(r => r.key === "safe")
+  const riskValue = p ? Math.round(p.final_risk * 100) : 0
 
   return (
     <div className="flex flex-col h-full overflow-y-auto" style={{ scrollbarWidth: "none" }}>
@@ -480,7 +253,7 @@ function AIPanel({ sel, ready, onClose }: {
       </div>
 
       <div className="p-4 space-y-5 flex-1">
-        {!ready ? (
+        {!ready || !p ? (
           <div className="space-y-3 pt-2">
             {[100, 75, 90, 55, 80, 60, 70].map((w, i) => (
               <Sk key={i} w={`${w}%`} h={12} />
@@ -492,56 +265,63 @@ function AIPanel({ sel, ready, onClose }: {
             <div>
               <div className="flex items-center justify-between mb-2">
                 <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--txt-muted)" }}>Risk Score</p>
-                <Chip color={r.risk < 33 ? "green" : r.risk < 66 ? "amber" : "red"}>{r.riskLabel}</Chip>
+                <Chip color={riskValue < 33 ? "green" : riskValue < 66 ? "amber" : "red"}>{p.severity}</Chip>
               </div>
               <div className="flex items-center gap-3">
-                <RiskGauge value={r.risk} />
+                <RiskGauge value={riskValue} />
                 <div className="flex-1 space-y-2">
-                  {(["safe", "moderate", "risky"] as RouteKey[]).map(k => (
-                    <div key={k}>
-                      <div className="flex justify-between text-[10px] mb-0.5">
-                        <span style={{ color: "var(--txt-muted)" }}>{ROUTES[k].label}</span>
-                        <span style={{ color: ROUTES[k].color }} className="font-semibold mono">{ROUTES[k].risk}</span>
+                  {routes.map(r => {
+                    const rv = r.prediction ? Math.round(r.prediction.final_risk * 100) : 0
+                    return (
+                      <div key={r.key}>
+                        <div className="flex justify-between text-[10px] mb-0.5">
+                          <span style={{ color: "var(--txt-muted)" }}>{r.label}</span>
+                          <span style={{ color: ROUTE_COLORS[r.key] }} className="font-semibold mono">{rv}</span>
+                        </div>
+                        <Bar2 value={rv} color={r.key === "safe" ? "green" : r.key === "moderate" ? "amber" : "red"} />
                       </div>
-                      <Bar2 value={ROUTES[k].risk} color={k === "safe" ? "green" : k === "moderate" ? "amber" : "red"} />
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
             </div>
 
             {/* Best Route */}
-            <div className="p-3 rounded-xl"
-              style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.22)" }}>
-              <div className="flex items-center gap-2 mb-1">
-                <CheckCircle className="w-4 h-4 text-green-400" />
-                <span className="text-[10px] font-bold text-green-400 uppercase tracking-wide">Recommended</span>
+            {safeRoute && (
+              <div className="p-3 rounded-xl"
+                style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.22)" }}>
+                <div className="flex items-center gap-2 mb-1">
+                  <CheckCircle className="w-4 h-4 text-green-400" />
+                  <span className="text-[10px] font-bold text-green-400 uppercase tracking-wide">Recommended</span>
+                </div>
+                <p className="text-sm font-semibold" style={{ color: "var(--txt-primary)" }}>Safe Route</p>
+                <p className="text-[10px] mt-0.5 mono" style={{ color: "var(--txt-muted)" }}>{safeRoute.distance} · {safeRoute.duration} · Risk {riskValue}/100</p>
               </div>
-              <p className="text-sm font-semibold" style={{ color: "var(--txt-primary)" }}>Northern Bypass (Safe Route)</p>
-              <p className="text-[10px] mt-0.5 mono" style={{ color: "var(--txt-muted)" }}>14.2 km · 28 min · Risk 12/100</p>
-            </div>
+            )}
 
             {/* AI Explanation */}
-            <div>
-              <div className="flex items-center gap-2 mb-1.5">
-                <Brain className="w-4 h-4 text-purple-400" />
-                <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--txt-muted)" }}>AI Explanation</p>
+            {p.explanation && (
+              <div>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <Brain className="w-4 h-4 text-purple-400" />
+                  <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--txt-muted)" }}>AI Explanation</p>
+                </div>
+                <p className="text-[11px] leading-relaxed" style={{ color: "var(--txt-secondary)" }}>
+                  {explanation}
+                  {explanation.length < (p.explanation?.length || 0) && (
+                    <span className="cursor-blink inline-block w-0.5 h-3 bg-blue-400 ml-0.5 align-middle rounded-full" />
+                  )}
+                </p>
               </div>
-              <p className="text-[11px] leading-relaxed" style={{ color: "var(--txt-secondary)" }}>
-                {explanation}
-                {explanation.length < AI_EXPLANATION.length && (
-                  <span className="cursor-blink inline-block w-0.5 h-3 bg-blue-400 ml-0.5 align-middle rounded-full" />
-                )}
-              </p>
-            </div>
+            )}
 
             {/* Stats grid */}
             <div className="grid grid-cols-2 gap-2">
               {[
-                { label: "ETA",       val: r.eta,                 color: "text-blue-400" },
-                { label: "Distance",  val: r.distance,            color: "text-purple-400" },
-                { label: "Weather",   val: r.weather,             color: "text-sky-400" },
-                { label: "Incidents", val: `${r.accidents} near`, color: "text-amber-400" },
+                { label: "Severity",   val: p.severity,          color: "text-blue-400" },
+                { label: "Hotspots",   val: `${p.hotspot_count}`, color: "text-purple-400" },
+                { label: "Penalty",    val: `+${(p.penalty * 100).toFixed(0)}%`, color: "text-sky-400" },
+                { label: "Weather",    val: weather?.condition || "N/A", color: "text-amber-400" },
               ].map(({ label, val, color }) => (
                 <div key={label} className="p-2.5 rounded-xl"
                   style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
@@ -551,52 +331,16 @@ function AIPanel({ sel, ready, onClose }: {
               ))}
             </div>
 
-            {/* Confidence */}
-            <div>
-              <div className="flex justify-between items-center mb-1.5">
-                <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--txt-muted)" }}>Model Confidence</p>
-                <span className="text-sm font-bold text-blue-400 mono">94.7%</span>
+            {/* Hotspot & Penalty detail */}
+            {p.hotspot_count > 0 && (
+              <div className="p-3 rounded-xl"
+                style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)" }}>
+                <p className="text-[10px] font-medium" style={{ color: "var(--txt-secondary)" }}>
+                  Route passes through <strong className="text-amber-400">{p.hotspot_count} accident hotspot{p.hotspot_count !== 1 ? "s" : ""}</strong>.
+                  Risk adjusted by +{(p.penalty * 100).toFixed(0)}%.
+                </p>
               </div>
-              <Bar2 value={94.7} color="blue" />
-              <p className="text-[10px] mt-1" style={{ color: "var(--txt-muted)" }}>Trained on 2.4M route scenarios · XGBoost + LSTM</p>
-            </div>
-
-            {/* Accident density */}
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider mb-2" style={{ color: "var(--txt-muted)" }}>Accident Density</p>
-              <div className="space-y-2">
-                {[
-                  { zone: "Sector 14 Bridge", v: 82, c: "red" },
-                  { zone: "MG Road Junction", v: 54, c: "amber" },
-                  { zone: "Northern Bypass",  v: 12, c: "green" },
-                ].map(({ zone, v, c }) => (
-                  <div key={zone}>
-                    <div className="flex justify-between text-[10px] mb-0.5">
-                      <span style={{ color: "var(--txt-muted)" }}>{zone}</span>
-                      <span className="mono font-semibold"
-                        style={{ color: c === "red" ? "#ef4444" : c === "amber" ? "#f59e0b" : "#22c55e" }}>{v}</span>
-                    </div>
-                    <Bar2 value={v} color={c} />
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Safety tips */}
-            <div>
-              <div className="flex items-center gap-2 mb-2">
-                <Shield className="w-4 h-4 text-amber-400" />
-                <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--txt-muted)" }}>Safety Alerts</p>
-              </div>
-              <ul className="space-y-2">
-                {SAFETY_TIPS.map((tip, i) => (
-                  <li key={i} className="flex items-start gap-2 text-[11px]" style={{ color: "var(--txt-secondary)" }}>
-                    <span className="mt-0.5 flex-shrink-0 w-4 h-4 rounded-full bg-amber-400/15 text-amber-400 text-[9px] flex items-center justify-center font-bold">{i + 1}</span>
-                    {tip}
-                  </li>
-                ))}
-              </ul>
-            </div>
+            )}
           </>
         )}
       </div>
@@ -605,475 +349,101 @@ function AIPanel({ sel, ready, onClose }: {
 }
 
 // ─── Route Comparison ───────────────────────────────────────────────────────
-function RouteComparisonCard({ sel, ready }: { sel: RouteKey; ready: boolean }) {
-  if (!ready) return (
+function RouteComparisonCard({ routes, sel }: { routes: RouteData[]; sel: RouteKey }) {
+  if (routes.length === 0) return (
     <div className="space-y-2.5">
       {[1, 2, 3].map(i => <Sk key={i} h={58} r={14} />)}
     </div>
   )
   return (
     <div className="space-y-2.5">
-      {(["safe", "moderate", "risky"] as RouteKey[]).map((k, idx) => {
-        const r = ROUTES[k]
-        const active = sel === k
+      {routes.map((r, idx) => {
+        const active = sel === r.key
+        const color = ROUTE_COLORS[r.key] || "#6366f1"
+        const label = r.key === "safe" ? "Safe Route" : r.key === "moderate" ? "Moderate Route" : "Risky Route"
         return (
-          <motion.div key={k}
+          <motion.div key={r.key}
             initial={{ opacity: 0, x: -18 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: idx * 0.1 }}
             className="flex items-center gap-3 p-3 rounded-xl transition-all"
             style={{
-              background: active ? `${r.color}12` : "rgba(255,255,255,0.03)",
-              border: `1px solid ${active ? r.color + "38" : "rgba(255,255,255,0.06)"}`,
+              background: active ? `${color}12` : "rgba(255,255,255,0.03)",
+              border: `1px solid ${active ? color + "38" : "rgba(255,255,255,0.06)"}`,
             }}>
             <div className="w-3 h-3 rounded-full flex-shrink-0"
-              style={{ background: r.color, boxShadow: `0 0 8px ${r.color}80` }} />
+              style={{ background: color, boxShadow: `0 0 8px ${color}80` }} />
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-0.5">
-                <span className="text-sm font-semibold" style={{ color: "var(--txt-primary)" }}>{r.label}</span>
-                <Chip color={k === "safe" ? "green" : k === "moderate" ? "amber" : "red"}>{r.riskLabel}</Chip>
+                <span className="text-sm font-semibold" style={{ color: "var(--txt-primary)" }}>{label}</span>
+                <Chip color={r.key === "safe" ? "green" : r.key === "moderate" ? "amber" : "red"}>{r.key === "safe" ? "Low Risk" : r.key === "moderate" ? "Moderate" : "High Risk"}</Chip>
               </div>
               <p className="text-[10px] mono" style={{ color: "var(--txt-muted)" }}>
-                {r.distance} · {r.eta} · {r.roadType}
+                {r.distance} · {r.duration}
               </p>
             </div>
             <div className="text-right flex-shrink-0">
-              <div className="text-xl font-extrabold mono" style={{ color: r.color }}>{r.risk}</div>
-              <div className="text-[9px]" style={{ color: "var(--txt-muted)" }}>/ 100</div>
+              <div className="text-xl font-extrabold mono" style={{ color }}>
+                {r.prediction ? Math.round(r.prediction.final_risk * 100) : r.distance.replace(" km", "")}
+              </div>
+              <div className="text-[9px]" style={{ color: "var(--txt-muted)" }}>
+                {r.prediction ? `/ 100` : r.duration}
+              </div>
             </div>
           </motion.div>
         )
       })}
-      <div className="pt-2 grid grid-cols-3 gap-2">
-        {[
-          { label: "Accidents (7d)", vals: ["2", "7", "19"] },
-          { label: "Weather",         vals: ["Clear", "Foggy", "Congested"] },
-          { label: "Road Quality",    vals: ["A+", "B", "C+"] },
-        ].map(({ label, vals }) => (
-          <div key={label} className="text-center">
-            <p className="text-[9px] mb-1.5 uppercase tracking-wide" style={{ color: "var(--txt-muted)" }}>{label}</p>
-            <div className="space-y-1">
-              {vals.map((v, i) => (
-                <div key={i} className="text-[10px] font-semibold mono"
-                  style={{ color: i === 0 ? "#22c55e" : i === 1 ? "#f59e0b" : "#ef4444" }}>{v}</div>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
     </div>
   )
 }
 
 // ─── ML Prediction ──────────────────────────────────────────────────────────
-function MLPredictionCard({ ready }: { ready: boolean }) {
-  if (!ready) return (
+function MLPredictionCard({ prediction }: { prediction: PredictionResult | null }) {
+  if (!prediction) return (
     <div className="space-y-3">
       <div className="flex justify-center"><Sk w={116} h={76} r={12} /></div>
       {[1, 2, 3, 4, 5].map(i => <Sk key={i} h={20} />)}
     </div>
   )
+  const riskValue = Math.round(prediction.final_risk * 100)
   return (
     <div className="space-y-4">
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-[10px] uppercase tracking-wide mb-1" style={{ color: "var(--txt-muted)" }}>ML Risk Score — Safe Route</p>
+          <p className="text-[10px] uppercase tracking-wide mb-1" style={{ color: "var(--txt-muted)" }}>ML Risk Score</p>
           <div className="flex items-baseline gap-1">
-            <span className="text-4xl font-extrabold mono text-green-400">12</span>
+            <span className="text-4xl font-extrabold mono"
+              style={{ color: riskValue < 33 ? "#22c55e" : riskValue < 66 ? "#f59e0b" : "#ef4444" }}>{riskValue}</span>
             <span className="text-sm" style={{ color: "var(--txt-muted)" }}>/ 100</span>
           </div>
           <div className="flex gap-2 mt-2">
-            <Chip color="blue">XGBoost</Chip>
-            <Chip color="purple">93.2% acc</Chip>
+            <Chip color={riskValue < 33 ? "green" : riskValue < 66 ? "amber" : "red"}>{prediction.severity}</Chip>
+            <Chip color="purple">{prediction.hotspot_count} hotspot{prediction.hotspot_count !== 1 ? "s" : ""}</Chip>
           </div>
         </div>
-        <RiskGauge value={12} />
-      </div>
-      <div>
-        <p className="text-[10px] font-bold uppercase tracking-wider mb-2.5" style={{ color: "var(--txt-muted)" }}>Feature Importance</p>
-        <div className="space-y-2.5">
-          {FEATURES.map(({ name, val }) => (
-            <div key={name}>
-              <div className="flex justify-between text-[10px] mb-1">
-                <span style={{ color: "var(--txt-secondary)" }}>{name}</span>
-                <span className="mono text-blue-400 font-semibold">{val}%</span>
-              </div>
-              <Bar2 value={val} color="blue" />
-            </div>
-          ))}
-        </div>
-      </div>
-      <div className="p-3 rounded-xl text-[10px] leading-relaxed" style={{
-        background: "rgba(59,130,246,0.07)", border: "1px solid rgba(59,130,246,0.18)",
-        color: "var(--txt-muted)",
-      }}>
-        Ensemble: XGBoost (70%) + Random Forest (20%) + Logistic Regression (10%)
-        · SHAP values computed on 128 features · Retrained weekly
-      </div>
-    </div>
-  )
-}
-
-// ─── Deep Learning ──────────────────────────────────────────────────────────
-function DeepLearningCard() {
-  const [dragging, setDragging] = useState(false)
-  const [analyzing, setAnalyzing] = useState(false)
-  const [result, setResult] = useState<string | null>(null)
-
-  const runAnalysis = () => {
-    if (analyzing) return
-    setResult(null)
-    setAnalyzing(true)
-    setTimeout(() => {
-      setAnalyzing(false)
-      setResult("Road: Wet asphalt · Visibility: Reduced (fog, ~180m) · Hazards: Standing water lane 2, debris near shoulder · Risk Score: 67/100 · Confidence: 88%")
-    }, 2600)
-  }
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2">
-        <Eye className="w-4 h-4 text-indigo-400" />
-        <span className="text-[10px] font-medium" style={{ color: "var(--txt-muted)" }}>
-          Road Image Analysis · ResNet-50 · 1.2M training images
-        </span>
+        <RiskGauge value={riskValue} />
       </div>
 
-      <div
-        onClick={runAnalysis}
-        onDragOver={e => { e.preventDefault(); setDragging(true) }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={e => { e.preventDefault(); setDragging(false); runAnalysis() }}
-        className="relative border-2 border-dashed rounded-xl p-6 flex flex-col items-center justify-center transition-all cursor-pointer select-none"
-        style={{
-          borderColor: dragging ? "rgba(99,102,241,0.6)" : "rgba(255,255,255,0.1)",
-          background: dragging ? "rgba(99,102,241,0.08)" : "transparent",
-          minHeight: 120,
-        }}>
-        {analyzing ? (
-          <div className="flex flex-col items-center gap-3">
-            <div className="w-8 h-8 rounded-full border-2 border-indigo-400 border-t-transparent spinner" />
-            <p className="text-xs text-indigo-400 font-medium">Analyzing road image…</p>
-            <div className="w-48">
-              <Bar2 value={72} color="purple" />
-            </div>
-          </div>
-        ) : (
-          <>
-            <Upload className="w-8 h-8 mb-2.5" style={{ color: "var(--txt-muted)" }} />
-            <p className="text-sm font-medium" style={{ color: "var(--txt-secondary)" }}>
-              Drop road image or click
-            </p>
-            <p className="text-[10px] mt-1" style={{ color: "var(--txt-muted)" }}>JPG, PNG · Max 10 MB</p>
-          </>
-        )}
-      </div>
-
-      <AnimatePresence>
-        {result && (
-          <motion.div
-            initial={{ opacity: 0, y: 10, scale: 0.97 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="p-3 rounded-xl text-[11px] leading-relaxed"
-            style={{ background: "rgba(99,102,241,0.1)", border: "1px solid rgba(99,102,241,0.25)", color: "var(--txt-secondary)" }}>
-            <div className="flex items-center gap-1.5 mb-2">
-              <Brain className="w-3.5 h-3.5 text-indigo-400" />
-              <span className="font-bold text-indigo-400 text-[10px] uppercase tracking-wide">CNN Analysis</span>
-            </div>
-            {result}
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {!result && !analyzing && (
-        <p className="text-[10px] text-center" style={{ color: "var(--txt-muted)" }}>
-          Demo: click the drop zone to simulate analysis
-        </p>
-      )}
-    </div>
-  )
-}
-
-// ─── GenAI Chat ─────────────────────────────────────────────────────────────
-function GenAIChatCard() {
-  const [msgs, setMsgs] = useState([{
-    role: "ai",
-    text: "Hello! I'm your AI Traffic Assistant. I've analyzed your route and ready to answer questions about road safety, conditions, or route optimization."
-  }])
-  const [input, setInput] = useState("")
-  const [typing, setTyping] = useState(false)
-  const endRef = useRef<HTMLDivElement>(null)
-
-  const send = (text: string) => {
-    if (!text.trim() || typing) return
-    setMsgs(p => [...p, { role: "user", text }])
-    setInput("")
-    setTyping(true)
-    setTimeout(() => {
-      const reply = AI_RESPONSES[text] ??
-        "Based on current ML analysis, the Safe Route remains optimal for your journey. Ask me anything more specific about conditions, timing, or alternatives!"
-      setMsgs(p => [...p, { role: "ai", text: reply }])
-      setTyping(false)
-    }, 1000 + Math.random() * 900)
-  }
-
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth" }) }, [msgs, typing])
-
-  return (
-    <div className="flex flex-col" style={{ height: 360 }}>
-      <div className="flex-1 overflow-y-auto space-y-3 mb-3 pr-0.5" style={{ scrollbarWidth: "none" }}>
-        {msgs.map((m, i) => (
-          <motion.div key={i}
-            initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-            className={`flex gap-2 ${m.role === "user" ? "flex-row-reverse" : ""}`}>
-            <div className={`w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center text-[9px] font-bold ${
-              m.role === "ai" ? "bg-blue-500/20 text-blue-400" : "bg-purple-500/20 text-purple-400"
-            }`}>{m.role === "ai" ? "AI" : "You"}</div>
-            <div className={`px-3 py-2 rounded-2xl text-[11px] leading-relaxed max-w-[82%] ${m.role === "user" ? "rounded-tr-sm" : "rounded-tl-sm"}`}
-              style={{
-                background: m.role === "user" ? "rgba(99,102,241,0.18)" : "rgba(255,255,255,0.05)",
-                border: `1px solid ${m.role === "user" ? "rgba(99,102,241,0.28)" : "rgba(255,255,255,0.07)"}`,
-                color: "var(--txt-secondary)",
-              }}>
-              {m.text}
-            </div>
-          </motion.div>
-        ))}
-        {typing && (
-          <div className="flex gap-2">
-            <div className="w-6 h-6 rounded-full bg-blue-500/20 flex items-center justify-center text-[9px] font-bold text-blue-400 flex-shrink-0">AI</div>
-            <div className="px-3 py-2 rounded-2xl rounded-tl-sm"
-              style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.07)" }}>
-              <div className="flex gap-1 items-center h-4">
-                {[0, 1, 2].map(i => (
-                  <div key={i} className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-bounce"
-                    style={{ animationDelay: `${i * 0.14}s` }} />
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-        <div ref={endRef} />
-      </div>
-
-      <div className="flex flex-wrap gap-1.5 mb-2">
-        {AI_QUICK_Q.map(q => (
-          <button key={q} onClick={() => send(q)}
-            className="text-[10px] px-2 py-1 rounded-full transition-all hover:scale-105 active:scale-95"
-            style={{ background: "rgba(59,130,246,0.09)", border: "1px solid rgba(59,130,246,0.2)", color: "var(--txt-muted)" }}>
-            {q}
-          </button>
-        ))}
-      </div>
-
-      <div className="flex gap-2">
-        <input
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={e => e.key === "Enter" && send(input)}
-          placeholder="Ask about your route…"
-          className="flex-1 px-3 py-2 rounded-xl text-[11px] outline-none transition-all"
-          style={{
-            background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)",
-            color: "var(--txt-primary)",
-          }}
-        />
-        <button onClick={() => send(input)}
-          className="p-2 rounded-xl bg-blue-500 hover:bg-blue-400 transition-colors active:scale-95">
-          <Send className="w-4 h-4 text-white" />
-        </button>
-      </div>
-    </div>
-  )
-}
-
-// ─── Scenario Simulator ──────────────────────────────────────────────────────
-function ScenarioCard({ ready }: { ready: boolean }) {
-  const [active, setActive] = useState<number | null>(null)
-  return (
-    <div className="space-y-3">
-      {!ready && (
-        <div className="text-xs text-center py-3" style={{ color: "var(--txt-muted)" }}>
-          Analyze a route to unlock scenario simulation
-        </div>
-      )}
-      <p className="text-[10px]" style={{ color: "var(--txt-muted)" }}>
-        {ready ? "Tap a scenario to simulate impact on route risk" : ""}
-      </p>
       <div className="grid grid-cols-2 gap-2">
-        {SCENARIOS.map((s, i) => {
-          const on = active === i
-          const pos = s.delta < 0
-          return (
-            <motion.button key={i}
-              whileHover={{ scale: 1.025 }} whileTap={{ scale: 0.97 }}
-              onClick={() => setActive(on ? null : i)}
-              disabled={!ready}
-              className="p-3 rounded-xl text-left transition-all disabled:opacity-30"
-              style={{
-                background: on ? (pos ? "rgba(34,197,94,0.12)" : "rgba(239,68,68,0.12)") : "rgba(255,255,255,0.04)",
-                border: `1px solid ${on ? (pos ? "rgba(34,197,94,0.3)" : "rgba(239,68,68,0.3)") : "rgba(255,255,255,0.07)"}`,
-              }}>
-              <div className="text-xl mb-1">{s.icon}</div>
-              <p className="text-xs font-semibold" style={{ color: "var(--txt-primary)" }}>{s.label}</p>
-              <AnimatePresence>
-                {on && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} exit={{ opacity: 0, height: 0 }}>
-                    <p className="text-[10px] mt-1 leading-relaxed" style={{ color: "var(--txt-muted)" }}>{s.desc}</p>
-                    <p className={`mt-1.5 text-xs font-bold mono ${pos ? "text-green-400" : "text-red-400"}`}>
-                      {pos ? "▼" : "▲"} Risk {Math.abs(s.delta)}%
-                    </p>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </motion.button>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
-// ─── Analytics ───────────────────────────────────────────────────────────────
-function AnalyticsCard() {
-  const [tab, setTab] = useState<"peaks" | "trends">("peaks")
-  const tt = {
-    contentStyle: { background: "rgba(8,13,28,0.97)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, fontSize: 11 },
-    labelStyle: { color: "rgba(255,255,255,0.6)" },
-    itemStyle: { color: "#94a3b8" },
-  }
-  return (
-    <div className="space-y-4">
-      <div className="flex gap-2">
-        {[{ k: "peaks", l: "Peak Hours" }, { k: "trends", l: "Risk Trends" }].map(({ k, l }) => (
-          <button key={k}
-            onClick={() => setTab(k as "peaks" | "trends")}
-            className={`text-xs px-3 py-1.5 rounded-lg transition-all ${tab === k ? "bg-blue-500/18 text-blue-400 border border-blue-500/28" : "hover:bg-white/6"}`}
-            style={{ color: tab === k ? undefined : "var(--txt-muted)", border: tab === k ? undefined : "1px solid transparent" }}>
-            {l}
-          </button>
-        ))}
+        <div className="p-3 rounded-xl"
+          style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
+          <p className="text-[9px] uppercase tracking-wide mb-0.5" style={{ color: "var(--txt-muted)" }}>Predicted Risk</p>
+          <p className="text-sm font-bold mono" style={{ color: "var(--txt-primary)" }}>{(prediction.predicted_risk * 100).toFixed(1)}%</p>
+        </div>
+        <div className="p-3 rounded-xl"
+          style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
+          <p className="text-[9px] uppercase tracking-wide mb-0.5" style={{ color: "var(--txt-muted)" }}>Hotspot Penalty</p>
+          <p className="text-sm font-bold mono" style={{ color: "var(--txt-primary)" }}>+{(prediction.penalty * 100).toFixed(0)}%</p>
+        </div>
       </div>
 
-      {tab === "peaks" ? (
-        <>
-          <p className="text-[10px]" style={{ color: "var(--txt-muted)" }}>Accident frequency by hour · 30-day rolling average</p>
-          <ResponsiveContainer width="100%" height={175}>
-            <BarChart data={PEAK_DATA} barSize={13} margin={{ top: 4, right: 4, bottom: 0, left: -18 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-              <XAxis dataKey="h" tick={{ fontSize: 8, fill: "rgba(255,255,255,0.28)" }} tickLine={false} axisLine={false} />
-              <YAxis tick={{ fontSize: 8, fill: "rgba(255,255,255,0.28)" }} tickLine={false} axisLine={false} />
-              <Tooltip {...tt} />
-              <Bar dataKey="v" radius={[4, 4, 0, 0]} name="Accidents">
-                {PEAK_DATA.map((d, i) => (
-                  <Cell key={`peak-${i}`} fill={d.v > 20 ? "#ef4444" : d.v > 12 ? "#f59e0b" : "#3b82f6"} fillOpacity={0.85} />
-                ))}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
-          <div className="flex gap-4 justify-center">
-            {[["#ef4444", "High (>20)"], ["#f59e0b", "Medium (12–20)"], ["#3b82f6", "Low (<12)"]].map(([c, l]) => (
-              <div key={l} className="flex items-center gap-1.5">
-                <div className="w-2.5 h-2.5 rounded-sm" style={{ background: c }} />
-                <span className="text-[9px]" style={{ color: "var(--txt-muted)" }}>{l}</span>
-              </div>
-            ))}
-          </div>
-        </>
-      ) : (
-        <>
-          <p className="text-[10px]" style={{ color: "var(--txt-muted)" }}>Monthly risk score and accident count trends</p>
-          <ResponsiveContainer width="100%" height={175}>
-            <AreaChart data={TREND_DATA} margin={{ top: 4, right: 4, bottom: 0, left: -18 }}>
-              <defs>
-                <linearGradient id="gR" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.35} />
-                  <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                </linearGradient>
-                <linearGradient id="gA" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#22c55e" stopOpacity={0.35} />
-                  <stop offset="95%" stopColor="#22c55e" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-              <XAxis dataKey="m" tick={{ fontSize: 8, fill: "rgba(255,255,255,0.28)" }} tickLine={false} axisLine={false} />
-              <YAxis tick={{ fontSize: 8, fill: "rgba(255,255,255,0.28)" }} tickLine={false} axisLine={false} />
-              <Tooltip {...tt} />
-              <Area type="monotone" dataKey="risk" name="Risk Score" stroke="#3b82f6" fill="url(#gR)" strokeWidth={2} dot={false} />
-              <Area type="monotone" dataKey="acc"  name="Accidents"  stroke="#22c55e" fill="url(#gA)" strokeWidth={2} dot={false} />
-            </AreaChart>
-          </ResponsiveContainer>
-          <div className="flex gap-4 justify-center">
-            {[["#3b82f6", "Risk Score"], ["#22c55e", "Accidents"]].map(([c, l]) => (
-              <div key={l} className="flex items-center gap-1.5">
-                <div className="w-5 h-0.5 rounded-full" style={{ background: c }} />
-                <span className="text-[9px]" style={{ color: "var(--txt-muted)" }}>{l}</span>
-              </div>
-            ))}
-          </div>
-        </>
+      {prediction.explanation && (
+        <div className="p-3 rounded-xl text-[10px] leading-relaxed"
+          style={{ background: "rgba(59,130,246,0.07)", border: "1px solid rgba(59,130,246,0.18)", color: "var(--txt-muted)" }}>
+          {prediction.explanation}
+        </div>
       )}
     </div>
-  )
-}
-
-// ─── Notification Drawer ────────────────────────────────────────────────────
-function NotifDrawer({ open, onClose, isDark }: { open: boolean; onClose: () => void; isDark: boolean }) {
-  const cfg: Record<string, string> = {
-    warning: "text-amber-400 bg-amber-400/10 border-amber-400/15",
-    info:    "text-blue-400 bg-blue-400/10 border-blue-400/15",
-    success: "text-green-400 bg-green-400/10 border-green-400/15",
-    danger:  "text-red-400 bg-red-400/10 border-red-400/15",
-  }
-  return (
-    <AnimatePresence>
-      {open && (
-        <>
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-40" style={{ background: "rgba(0,0,0,0.55)" }}
-            onClick={onClose} />
-          <motion.div
-            initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }}
-            transition={{ type: "spring", damping: 26, stiffness: 220 }}
-            className="fixed right-0 top-0 h-full w-80 z-50 flex flex-col"
-            style={{
-              background: isDark ? "rgba(8,13,28,0.97)" : "rgba(255,255,255,0.97)",
-              backdropFilter: "blur(20px)",
-              borderLeft: "1px solid var(--glass-border)",
-            }}>
-            <div className="flex items-center justify-between p-5 border-b" style={{ borderColor: "var(--glass-border)" }}>
-              <div>
-                <h3 className="font-semibold exo" style={{ color: "var(--txt-primary)" }}>Notifications</h3>
-                <p className="text-xs mt-0.5" style={{ color: "var(--txt-muted)" }}>{NOTIFICATIONS.length} active alerts</p>
-              </div>
-              <button onClick={onClose} className="p-2 rounded-lg hover:bg-white/10 transition-colors" style={{ color: "var(--txt-muted)" }}>
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-2.5" style={{ scrollbarWidth: "none" }}>
-              {NOTIFICATIONS.map(n => (
-                <motion.div key={n.id}
-                  initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-                  className={`p-3 rounded-xl border ${cfg[n.type]}`}>
-                  <p className="text-xs font-medium">{n.text}</p>
-                  <p className="text-[10px] mt-1 opacity-60">{n.time}</p>
-                </motion.div>
-              ))}
-            </div>
-            <div className="p-4 border-t" style={{ borderColor: "var(--glass-border)" }}>
-              <button
-                onClick={onClose}
-                className="w-full py-2.5 rounded-xl text-xs font-semibold text-white transition-all"
-                style={{ background: "linear-gradient(135deg, #3b82f6, #6366f1)" }}>
-                Mark all as read
-              </button>
-            </div>
-          </motion.div>
-        </>
-      )}
-    </AnimatePresence>
   )
 }
 
@@ -1087,8 +457,6 @@ export default function App() {
   const [ready,  setReady]  = useState(false)
   const [sel,    setSel]    = useState<RouteKey>("safe")
   const [aiOpen, setAIOpen] = useState(true)
-  const [notif,  setNotif]  = useState(false)
-  const [voice,  setVoice]  = useState(false)
   const [routes, setRoutes] = useState<RouteData[]>([])
   const [sourceCoords, setSourceCoords] = useState<[number, number] | null>(null)
   const [destCoords, setDestCoords] = useState<[number, number] | null>(null)
@@ -1162,13 +530,12 @@ export default function App() {
   ]
 
   const selectedRoute = routes.find(r => r.key === sel) || null
+  const activePrediction = selectedRoute?.prediction || null
 
   const cards = [
-    { id: "cmp", title: "Route Comparison",     Icon: Route,        accent: "#3b82f6", content: <RouteComparisonCard sel={sel} ready={ready} /> },
-    { id: "ml",  title: "ML Prediction",         Icon: Brain,        accent: "#8b5cf6", content: <MLPredictionCard ready={ready} /> },
-    { id: "sc",  title: "Scenario Simulator",   Icon: Zap,          accent: "#f59e0b", content: <ScenarioCard ready={ready} /> },
-    { id: "an",  title: "Analytics",             Icon: BarChart2,    accent: "#22c55e", content: <AnalyticsCard /> },
-    { id: "rd",  title: "Route Details",         Icon: Map,          accent: "#06b6d4", content: <RouteDetailsCard route={selectedRoute} ready={ready} source={source} destination={dest} sourceCoords={sourceCoords} destCoords={destCoords} /> },
+    { id: "cmp", title: "Route Comparison",     Icon: Route,        accent: "#3b82f6", content: <RouteComparisonCard routes={routes} sel={sel} /> },
+    { id: "ml",  title: "ML Prediction",         Icon: Brain,        accent: "#8b5cf6", content: <MLPredictionCard prediction={activePrediction} /> },
+    { id: "rd",  title: "Route Details",         Icon: Map,          accent: "#06b6d4", content: <RouteDetailsCard route={selectedRoute} ready={ready} source={source} destination={dest} sourceCoords={sourceCoords} destCoords={destCoords} weather={weather} prediction={activePrediction} /> },
   ]
 
   const bgStyle = {
@@ -1181,7 +548,6 @@ export default function App() {
     <div className="min-h-screen w-full" style={bgStyle}>
       <style dangerouslySetInnerHTML={{ __html: ANIM_CSS }} />
       <Toaster position="top-right" theme={isDark ? "dark" : "light"} richColors />
-      <NotifDrawer open={notif} onClose={() => setNotif(false)} isDark={isDark} />
 
       {/* Ambient orbs */}
       {isDark && (
@@ -1409,7 +775,7 @@ export default function App() {
                         <button key={k} onClick={() => setSel(k)}
                           className="flex items-center gap-2 py-1 transition-all w-full"
                           style={{ opacity: sel === k ? 1 : 0.45 }}>
-                          <div className="w-5 h-1.5 rounded-full" style={{ background: ROUTES[k].color }} />
+                          <div className="w-5 h-1.5 rounded-full" style={{ background: ROUTE_COLORS[k] || "#6366f1" }} />
                           <span className="text-[10px] font-medium text-left" style={{ color: "rgba(255,255,255,0.75)" }}>{r.label}</span>
                         </button>
                       )
@@ -1443,7 +809,7 @@ export default function App() {
                 className="flex-shrink-0 hidden lg:block overflow-hidden"
                 style={{ minHeight: 430 }}>
                 <Glass className="h-full overflow-hidden" style={{ minHeight: 430 }}>
-                  <AIPanel sel={sel} ready={ready} onClose={() => setAIOpen(false)} />
+                  <AIPanel sel={sel} ready={ready} onClose={() => setAIOpen(false)} routes={routes} prediction={activePrediction} weather={weather} />
                 </Glass>
               </motion.div>
             )}

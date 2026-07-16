@@ -1,4 +1,23 @@
-import { Route, MapPin, AlertTriangle, Navigation, Target } from "lucide-react"
+import { Route, MapPin, AlertTriangle, Navigation, Target, Cloud, Shield } from "lucide-react"
+
+interface WeatherData {
+  temperature: number
+  feelsLike: number
+  humidity: number
+  precipitation: number
+  windSpeed: number
+  condition: string
+  icon: string
+}
+
+interface PredictionResult {
+  predicted_risk: number
+  hotspot_count: number
+  severity: string
+  penalty: number
+  final_risk: number
+  explanation: string
+}
 
 interface RouteDetailsCardProps {
   route: {
@@ -16,6 +35,8 @@ interface RouteDetailsCardProps {
   destination: string
   sourceCoords: [number, number] | null
   destCoords: [number, number] | null
+  weather?: WeatherData | null
+  prediction?: PredictionResult | null
 }
 
 function Chip({ color, children }: { color: string; children: React.ReactNode }) {
@@ -53,7 +74,7 @@ function GlassBox({ children, className = "" }: { children: React.ReactNode; cla
   )
 }
 
-export default function RouteDetailsCard({ route, ready, source, destination, sourceCoords, destCoords }: RouteDetailsCardProps) {
+export default function RouteDetailsCard({ route, ready, source, destination, sourceCoords, destCoords, weather, prediction }: RouteDetailsCardProps) {
   if (!ready || !route) {
     return (
       <div className="space-y-3">
@@ -64,6 +85,7 @@ export default function RouteDetailsCard({ route, ready, source, destination, so
 
   const details = route.details
   const segments = details?.roadSegments || []
+  const riskValue = prediction ? Math.round(prediction.final_risk * 100) : null
 
   return (
     <div className="space-y-3">
@@ -113,13 +135,48 @@ export default function RouteDetailsCard({ route, ready, source, destination, so
         </div>
       </GlassBox>
 
+      {/* ML Prediction info */}
+      {prediction && (
+        <div className="grid grid-cols-3 gap-2">
+          <GlassBox>
+            <p className="text-[9px] uppercase tracking-wide mb-0.5" style={{ color: "var(--txt-muted)" }}>Risk</p>
+            <p className="text-sm font-bold mono" style={{ color: riskValue !== null && riskValue < 33 ? "#22c55e" : riskValue !== null && riskValue < 66 ? "#f59e0b" : "#ef4444" }}>
+              {riskValue !== null ? `${riskValue}/100` : "N/A"}
+            </p>
+          </GlassBox>
+          <GlassBox>
+            <p className="text-[9px] uppercase tracking-wide mb-0.5" style={{ color: "var(--txt-muted)" }}>Severity</p>
+            <p className="text-sm font-bold mono" style={{ color: "var(--txt-primary)" }}>{prediction.severity}</p>
+          </GlassBox>
+          <GlassBox>
+            <p className="text-[9px] uppercase tracking-wide mb-0.5" style={{ color: "var(--txt-muted)" }}>Hotspots</p>
+            <p className="text-sm font-bold mono" style={{ color: "var(--txt-primary)" }}>{prediction.hotspot_count}</p>
+          </GlassBox>
+        </div>
+      )}
+
+      {/* Weather */}
+      {weather && (
+        <GlassBox>
+          <div className="flex items-center gap-2.5">
+            <Cloud className="w-4 h-4 text-sky-400 flex-shrink-0" />
+            <div>
+              <p className="text-[9px] uppercase tracking-wide" style={{ color: "var(--txt-muted)" }}>Weather</p>
+              <p className="text-sm font-bold mono" style={{ color: "var(--txt-primary)" }}>
+                {weather.condition} · {weather.temperature}°C
+              </p>
+            </div>
+          </div>
+        </GlassBox>
+      )}
+
       {/* Traffic signals */}
       <GlassBox>
         <div className="flex items-center gap-2.5">
           <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0" />
           <div>
             <p className="text-[9px] uppercase tracking-wide" style={{ color: "var(--txt-muted)" }}>Traffic Signals</p>
-            <p className="text-sm font-bold mono text-amber-400">{details?.trafficSignals || 0} along route</p>
+            <p className="text-sm font-bold mono text-amber-400">{details?.trafficSignals ?? "N/A"} along route</p>
           </div>
         </div>
       </GlassBox>
