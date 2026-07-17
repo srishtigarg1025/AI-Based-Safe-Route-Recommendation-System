@@ -94,7 +94,7 @@ function avgWeather(weathers) {
   }
 }
 
-const ROUTE_KEYS = ["safe", "moderate", "risky"]
+
 const ROUTE_NAMES = ["Route 1", "Route 2", "Route 3"]
 
 app.post("/api/routes", async (req, res) => {
