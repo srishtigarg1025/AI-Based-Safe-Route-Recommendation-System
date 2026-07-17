@@ -117,7 +117,7 @@ function avgWeather(weathers) {
   }
 }
 
-const ROUTE_KEYS = ["safe", "moderate", "risky"]
+
 const ROUTE_NAMES = ["Route 1", "Route 2", "Route 3"]
 
 app.post("/api/routes", async (req, res) => {
@@ -174,7 +174,6 @@ app.post("/api/routes", async (req, res) => {
       const trafficSignals = Math.max(allSteps.length - 1, 0)
 
       return {
-        key: ROUTE_KEYS[i] || "safe",
         label: `${distKm} km · ${durMin} min`,
         distance: `${distKm} km`,
         distanceKm: parseFloat(distKm),
@@ -270,7 +269,6 @@ function mapTrafficSignal(count) {
         ? mapRoadType(segments[0].type)
         : "urban";
       const weightedLanes = segments.reduce((s, seg) => s + (seg.lanes || 2) * (seg.distanceKm || 0), 0) / totalDist;
-      const adj = computeRouteAdjustment(route);
       const mlPayload = {
         day_of_week: dayOfWeek,
         road_type: weightedRoadType,
