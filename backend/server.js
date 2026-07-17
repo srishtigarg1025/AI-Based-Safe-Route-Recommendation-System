@@ -61,21 +61,44 @@ function wmoToCondition(code) {
 }
 
 async function getWeather(lat, lon) {
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,uv_index&timezone=auto`
-  const res = await fetch(url)
-  const data = await res.json()
-  if (!data || !data.current) return null
-  const cond = wmoToCondition(data.current.weather_code)
-  return {
-    temperature: data.current.temperature_2m,
-    feelsLike: data.current.apparent_temperature,
-    humidity: data.current.relative_humidity_2m,
-    precipitation: data.current.precipitation,
-    windSpeed: data.current.wind_speed_10m,
-    uvIndex: data.current.uv_index,
-    condition: cond.label,
-    icon: cond.icon,
-    weatherCode: data.current.weather_code,
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,uv_index&timezone=auto`;
+
+  try {
+    console.log("🌦️ WEATHER REQUEST:", lat, lon);
+    console.log("🌐 URL:", url);
+
+    const res = await fetch(url);
+
+    console.log("🌦️ WEATHER STATUS:", res.status);
+
+    const data = await res.json();
+
+    console.log("🌦️ WEATHER RESPONSE:", JSON.stringify(data));
+
+    if (!data || !data.current) {
+      console.log("❌ CURRENT WEATHER MISSING");
+      return null;
+    }
+
+    const cond = wmoToCondition(data.current.weather_code);
+
+    console.log("✅ WEATHER CONDITION:", cond);
+
+    return {
+      temperature: data.current.temperature_2m,
+      feelsLike: data.current.apparent_temperature,
+      humidity: data.current.relative_humidity_2m,
+      precipitation: data.current.precipitation,
+      windSpeed: data.current.wind_speed_10m,
+      uvIndex: data.current.uv_index,
+      condition: cond.label,
+      icon: cond.icon,
+      weatherCode: data.current.weather_code,
+    };
+
+  } catch (error) {
+    console.error("❌ WEATHER ERROR:", error);
+    return null;
   }
 }
 
@@ -177,10 +200,9 @@ app.post("/api/routes", async (req, res) => {
       const midW = await getWeather(midLat, midLon)
       const pathW = avgWeather([srcW, midW, dstW].filter(Boolean))
       weather = { source: srcW, destination: dstW, path: pathW }
-    } catch (_) {
-      console.warn("Weather fetch failed, continuing without weather data")
+    } catch (error) {
+      console.error("❌ WEATHER FETCH FAILED:", error);
     }
-    
 // --------------------------------------------------
 // Prepare ML Input (common fields)
 // --------------------------------------------------
