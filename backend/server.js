@@ -118,8 +118,6 @@ function avgWeather(weathers) {
 }
 
 
-const ROUTE_NAMES = ["Route 1", "Route 2", "Route 3"]
-
 app.post("/api/routes", async (req, res) => {
   try {
     const { source, destination } = req.body
@@ -284,45 +282,37 @@ function mapTrafficSignal(count) {
         route_coordinates: route.coords.map(
           ([lon, lat]) => [lat, lon]
         ),
-        adjustment: adj
       };
       try {
         const mlRes = await axios.post(`${ML_API}/predict`, mlPayload);
         return mlRes.data;
       } catch (e) {
-        console.warn(`ML prediction failed for route ${route.key}: ${e.message}`);
+        console.warn(`ML prediction failed for route : ${e.message}`);
         return null;
       }
     })
   );
 
-// Per-route adjustment – amplifies real route differences
-// that the ML model cannot see (highway ratio, segment complexity)
-function computeRouteAdjustment(route) {
-  const distKm = route.distanceKm || 0;
-  const roadSegments = route.details?.roadSegments || [];
-  const trafficSignals = route.details?.trafficSignals || 0;
 
-  let highwayDistKm = 0;
-  for (const s of roadSegments) {
-    const d = s.distanceKm || 0;
-    if (s.type === "Highway" || s.type === "Flyover") highwayDistKm += d;
-  }
-  const highwayRatio = distKm > 0 ? highwayDistKm / distKm : 0;
-  const signalDensity = distKm > 0 ? trafficSignals / distKm : 0;
-  const segmentCount = roadSegments.length;
-
-  let adj = 0;
-  adj -= highwayRatio * 0.06;                    // safer roads
-  adj += Math.min(signalDensity, 0.5) * 0.04;    // intersections
-  adj += Math.min(segmentCount / 20, 0.5) * 0.04; // complexity
-  adj += Math.max(0, (distKm - 50) * 0.0001);    // exposure
-  return adj;
-}
-
-  const routesWithPredictions = routeResults.map((route, i) => ({
+ const routesWithPredictions = routeResults
+  .map((route, i) => ({
     ...route,
-    prediction: routePredictions[i]
+    prediction: routePredictions[i],
+  }))
+  .filter(route => route.prediction !== null)
+  .sort(
+    (a, b) =>
+      a.prediction.final_risk -
+      b.prediction.final_risk
+  )
+  .map((route, index) => ({
+    ...route,
+    key:
+      index === 0
+        ? "safe"
+        : index === 1
+        ? "moderate"
+        : "risky",
   }));
 
   res.json({
