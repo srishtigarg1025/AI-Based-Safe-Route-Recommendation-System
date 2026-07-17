@@ -151,7 +151,6 @@ app.post("/api/routes", async (req, res) => {
       const trafficSignals = Math.max(allSteps.length - 1, 0)
 
       return {
-        key: ROUTE_KEYS[i] || "safe",
         label: `${distKm} km · ${durMin} min`,
         distance: `${distKm} km`,
         distanceKm: parseFloat(distKm),
