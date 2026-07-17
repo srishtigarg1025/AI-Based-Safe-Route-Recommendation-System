@@ -7,7 +7,7 @@ dotenv.config()
 
 const ML_API =
     process.env.ML_API_URL ||
-    "http://localhost:8000"
+    "https://ai-based-safe-route-recommendation-system.onrender.com"
 
 
 const app = express()
