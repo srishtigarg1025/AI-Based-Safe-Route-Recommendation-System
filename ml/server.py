@@ -50,8 +50,6 @@ class RouteRequest(BaseModel):
 
     route_coordinates: List[List[float]]
 
-    adjustment: float = 0.0
-
 
 # ----------------------------------------
 # Health Check
