@@ -247,7 +247,6 @@ function mapTrafficSignal(count) {
         ? mapRoadType(segments[0].type)
         : "urban";
       const weightedLanes = segments.reduce((s, seg) => s + (seg.lanes || 2) * (seg.distanceKm || 0), 0) / totalDist;
-      const adj = computeRouteAdjustment(route);
       const mlPayload = {
         day_of_week: dayOfWeek,
         road_type: weightedRoadType,
