@@ -790,13 +790,14 @@ app.post("/api/routes", async (req, res) => {
 
 
     const visibility =
-      rawCondition.includes("fog") ||
-      rawCondition.includes("rain") ||
+  rawCondition.includes("fog")
+    ? "low"
+    : rawCondition.includes("rain") ||
       rawCondition.includes("drizzle") ||
       rawCondition.includes("thunderstorm") ||
       rawCondition.includes("snow")
-        ? "low"
-        : "high"
+        ? "medium"
+        : "high";
 
 
     // ------------------------------------------
