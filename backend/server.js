@@ -432,7 +432,7 @@ function mapRoadType(type) {
   }
 
 
-  return "urban"
+  return "rural"
 }
 
 
