@@ -283,14 +283,23 @@ function mapTrafficSignal(count) {
       const segments = route.details.roadSegments || [];
       // Weighted average by distance – better represents the whole route
       const totalDist = segments.reduce((s, seg) => s + (seg.distanceKm || 0), 0) || 1;
-      const weightedRoadType = segments.length > 0
-        ? mapRoadType(segments[0].type)
-        : "urban";
+      const roadTypeDistance = {};
+
+      for (const seg of segments) {
+  const type = mapRoadType(seg.type);
+
+  roadTypeDistance[type] =
+    (roadTypeDistance[type] || 0) + seg.distanceKm;
+}
+
+const dominantRoadType = Object.entries(roadTypeDistance)
+  .sort((a, b) => b[1] - a[1])[0]?.[0] || "urban";
+    console.log("Road Type Distance:", roadTypeDistance);
       const weightedLanes = segments.reduce((s, seg) => s + (seg.lanes || 2) * (seg.distanceKm || 0), 0) / totalDist;
       const adj = computeRouteAdjustment(route);
       const mlPayload = {
         day_of_week: dayOfWeek,
-        road_type: weightedRoadType,
+        road_type: dominantRoadType,
         weather: mapWeather(weather?.path?.condition),
         visibility,
         festival: "No Festival",
@@ -307,7 +316,7 @@ function mapTrafficSignal(count) {
       };
       console.log("\n========== ROUTE DEBUG ==========");
       console.log("Route:", route.label);
-      console.log("Road Type:", weightedRoadType);
+      console.log("Dominant Road Type:", dominantRoadType);
       console.log("Weighted Lanes:", Math.round(weightedLanes));
       console.log("Traffic Signals:", route.details.trafficSignals);
       console.log("Adjustment:", adj);
