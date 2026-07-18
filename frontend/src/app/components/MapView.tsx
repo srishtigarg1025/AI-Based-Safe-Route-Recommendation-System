@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react"
+import { useEffect } from "react"
 import { MapContainer, TileLayer, Marker, Polyline, Popup, useMap } from "react-leaflet"
 import L from "leaflet"
 import "leaflet/dist/leaflet.css"
@@ -21,13 +21,20 @@ const ROUTE_STYLES: Record<string, { color: string; weight: number; opacity: num
   risky: { color: "#ef4444", weight: 6, opacity: 0.9 },
 }
 
-const SELECTED_STYLES: Record<string, { color: string; weight: number; opacity: number }> = {
-  safe: { color: "#22c55e", weight: 8, opacity: 1 },
-  moderate: { color: "#f59e0b", weight: 8, opacity: 1 },
-  risky: { color: "#ef4444", weight: 8, opacity: 1 },
-}
-
 type RouteKey = "safe" | "moderate" | "risky"
+
+interface SegmentPrediction {
+  segmentIndex: number
+  road: string
+  type: string
+  distanceKm: number
+  predicted_risk: number
+  hotspot_count: number
+  severity: string
+  penalty: number
+  final_risk: number
+  explanation: string
+}
 
 interface RouteData {
   key: RouteKey
@@ -35,6 +42,32 @@ interface RouteData {
   distance: string
   duration: string
   coords: [number, number][]
+  details?: {
+    roadSegments: {
+      road: string
+      distance: string
+      type: string
+      lanes: number
+      coords: [number, number][]
+    }[]
+    trafficSignals: number
+    totalSteps: number
+  }
+  prediction?: {
+    predicted_risk: number
+    hotspot_count: number
+    severity: string
+    penalty: number
+    final_risk: number
+    explanation: string
+    segment_predictions?: SegmentPrediction[]
+  }
+}
+
+function riskColor(risk: number): string {
+  if (risk <= 0.35) return "#22c55e"
+  if (risk <= 0.65) return "#f59e0b"
+  return "#ef4444"
 }
 
 interface MapViewProps {
@@ -89,21 +122,67 @@ export default function MapView({ source, destination, ready, routes, selected, 
         <FitBounds routes={routes} sourceCoords={sourceCoords} destCoords={destCoords} resetKey={resetKey} />
 
         {routes.map((route) => {
-          const coords: [number, number][] = route.coords.map(c => [c[1], c[0]])
           const isSelected = selected === route.key
-          const style = isSelected ? SELECTED_STYLES[route.key] : ROUTE_STYLES[route.key]
+
+          if (isSelected) {
+            const segments = route.details?.roadSegments || []
+            const segPreds = route.prediction?.segment_predictions || []
+            const overallRisk = route.prediction?.final_risk ?? 0.5
+
+            return (
+              <div key={route.key}>
+                <Polyline
+                  positions={route.coords.map(c => [c[1], c[0]])}
+                  pathOptions={{ color: riskColor(overallRisk), weight: 3, opacity: 0.15, dashArray: "6 4" }}
+                  interactive={false}
+                />
+                {segments.map((seg, i) => {
+                  if (!seg.coords || seg.coords.length < 2) return null
+                  const pred = segPreds.find(p => p.segmentIndex === i)
+                  const risk = pred?.final_risk ?? overallRisk
+                  const color = riskColor(risk)
+                  return (
+                    <Polyline
+                      key={`seg-${i}`}
+                      positions={seg.coords.map(c => [c[1], c[0]] as [number, number])}
+                      pathOptions={{ color, weight: 7, opacity: 0.95 }}
+                      eventHandlers={{ click: () => onSelect(route.key) }}
+                    >
+                      <Popup>
+                        <div style={{ fontFamily: "system-ui", fontSize: 11, minWidth: 160, lineHeight: 1.6 }}>
+                          <strong style={{ color }}>{seg.road || "Unnamed Road"}</strong>
+                          <br />
+                          <span style={{ color: "#888" }}>Segment {i + 1}</span>
+                          <br />
+                          Distance: {seg.distance}
+                          <br />
+                          Risk: <strong style={{ color }}>{pred ? `${Math.round(pred.final_risk * 100)}%` : "N/A"}</strong>
+                          {pred && (
+                            <>
+                              <br />
+                              Severity: {pred.severity}
+                              <br />
+                              Hotspots: {pred.hotspot_count}
+                              <br />
+                              <span style={{ color: "#888", fontSize: 10 }}>{pred.explanation}</span>
+                            </>
+                          )}
+                        </div>
+                      </Popup>
+                    </Polyline>
+                  )
+                })}
+              </div>
+            )
+          }
+
+          const style = ROUTE_STYLES[route.key]
           return (
             <Polyline
               key={route.key}
-              positions={coords}
-              pathOptions={{
-                color: style.color,
-                weight: style.weight,
-                opacity: style.opacity,
-              }}
-              eventHandlers={{
-                click: () => onSelect(route.key),
-              }}
+              positions={route.coords.map(c => [c[1], c[0]])}
+              pathOptions={{ ...style, opacity: 0.4 }}
+              eventHandlers={{ click: () => onSelect(route.key) }}
             >
               <Popup>
                 <div style={{ fontFamily: "system-ui", fontSize: 12, minWidth: 140 }}>

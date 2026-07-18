@@ -229,7 +229,10 @@ async function getWeather(lat, lon) {
 
   try {
 
-    const res = await fetch(url)
+    const controller = new AbortController()
+    const t = setTimeout(() => controller.abort(), 5000)
+    const res = await fetch(url, { signal: controller.signal })
+    clearTimeout(t)
 
 
     if (!res.ok) {
@@ -459,34 +462,6 @@ function mapWeather(condition) {
 
 
 // ==================================================
-// SEGMENT ADJUSTMENT
-// ==================================================
-
-function computeSegmentAdjustment(segment) {
-
-  let adjustment = 0
-
-
-  // Highway bonus
-  if (
-    segment.type === "Highway" ||
-    segment.type === "Flyover"
-  ) {
-    adjustment -= 0.06
-  }
-
-
-  // Traffic signal penalty
-  if (segment.trafficSignal === 1) {
-    adjustment += 0.04
-  }
-
-
-  return adjustment
-}
-
-
-// ==================================================
 // ROUTE API
 // ==================================================
 
@@ -645,7 +620,8 @@ app.post("/api/routes", async (req, res) => {
             )
             .filter(
               segment =>
-                segment.distanceKm > 0
+                segment.distanceKm > 0 &&
+                segment.coords.length >= 2
             )
 
 
@@ -845,12 +821,6 @@ app.post("/api/routes", async (req, res) => {
                   async (segment) => {
 
 
-                    const adjustment =
-                      computeSegmentAdjustment(
-                        segment
-                      )
-
-
                     const mlPayload = {
 
                       day_of_week:
@@ -894,8 +864,6 @@ app.post("/api/routes", async (req, res) => {
                           ([lon, lat]) =>
                             [lat, lon]
                         ),
-
-                      adjustment,
                     }
 
 
@@ -930,12 +898,6 @@ app.post("/api/routes", async (req, res) => {
 
 
                     console.log(
-                      "Adjustment:",
-                      adjustment
-                    )
-
-
-                    console.log(
                       "====================================\n"
                     )
 
@@ -945,7 +907,8 @@ app.post("/api/routes", async (req, res) => {
                       const mlRes =
                         await axios.post(
                           `${ML_API}/predict`,
-                          mlPayload
+                          mlPayload,
+                          { timeout: 15000 }
                         )
 
 

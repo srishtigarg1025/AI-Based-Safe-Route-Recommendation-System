@@ -76,7 +76,7 @@ def predict_route(data: RouteRequest):
 
         hotspot_count = check_route_hotspots(
             data.route_coordinates
-        )
+        ) if len(data.route_coordinates) >= 2 else 0
 
         final_risk, penalty, severity = adjust_risk(
             predicted_risk,

@@ -12,6 +12,19 @@ import RouteDetailsCard from "./components/RouteDetailsCard"
 
 const API_BASE = "https://ai-based-safe-route-recommendation.onrender.com"
 
+interface SegmentPrediction {
+  segmentIndex: number
+  road: string
+  type: string
+  distanceKm: number
+  predicted_risk: number
+  hotspot_count: number
+  severity: string
+  penalty: number
+  final_risk: number
+  explanation: string
+}
+
 interface RouteData {
   key: "safe" | "moderate" | "risky"
   label: string
@@ -19,7 +32,13 @@ interface RouteData {
   duration: string
   coords: [number, number][]
   details?: {
-    roadSegments: { road: string; distance: string; type: string; lanes: number }[]
+    roadSegments: {
+      road: string
+      distance: string
+      type: string
+      lanes: number
+      coords: [number, number][]
+    }[]
     trafficSignals: number
     totalSteps: number
   }
@@ -43,6 +62,7 @@ interface PredictionResult {
   penalty: number
   final_risk: number
   explanation: string
+  segment_predictions?: SegmentPrediction[]
 }
 
 // ─── CSS injected animations ───────────────────────────────────────────────
