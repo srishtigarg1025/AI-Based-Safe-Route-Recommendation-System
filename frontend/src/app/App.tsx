@@ -10,7 +10,7 @@ import {
 import MapView from "./components/MapView"
 import RouteDetailsCard from "./components/RouteDetailsCard"
 
-const API_BASE = ""
+const API_BASE = "https://ai-based-safe-route-recommendation.onrender.com"
 
 interface RouteData {
   key: "safe" | "moderate" | "risky"
