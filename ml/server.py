@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
 from fastapi.middleware.cors import CORSMiddleware
 
 from predict import predict_risk
@@ -9,18 +9,10 @@ from risk import adjust_risk, calculate_severity
 from explain_route import explain_route
 
 
-# ----------------------------------------
-# FastAPI App
-# ----------------------------------------
-
 app = FastAPI(
     title="Safe Route Recommendation API",
     version="1.0"
 )
-
-# ----------------------------------------
-# CORS
-# ----------------------------------------
 
 app.add_middleware(
     CORSMiddleware,
@@ -31,84 +23,75 @@ app.add_middleware(
 )
 
 
-# ----------------------------------------
-# Request Model
-# ----------------------------------------
-
 class RouteRequest(BaseModel):
     day_of_week: str
-    road_type: str
+
+    road_type: Optional[str] = None
+
     weather: str
     visibility: str
     festival: str
+
     hour: int
     is_weekend: int
-    lanes: int
+
+    lanes: Optional[int] = None
+
     traffic_signal: int
     temperature: float
     is_peak_hour: int
 
     route_coordinates: List[List[float]]
 
-    adjustment: float = 0.0
 
-
-# ----------------------------------------
-# Health Check
-# ----------------------------------------
 
 @app.get("/")
 def home():
     return {"status": "running"}
 
 
-# ----------------------------------------
-# Prediction Endpoint
-# ----------------------------------------
-
 @app.post("/predict")
 def predict_route(data: RouteRequest):
 
     try:
 
+        road_type = data.road_type or "urban"
+        lanes = data.lanes or 2
+
         route_features = {
             "day_of_week": data.day_of_week,
-            "road_type": data.road_type,
+            "road_type": road_type,
             "weather": data.weather,
             "visibility": data.visibility,
             "festival": data.festival,
             "hour": data.hour,
             "is_weekend": data.is_weekend,
-            "lanes": data.lanes,
+            "lanes": lanes,
             "traffic_signal": data.traffic_signal,
             "temperature": data.temperature,
-            "is_peak_hour": data.is_peak_hour
+            "is_peak_hour": data.is_peak_hour,
         }
 
-        # Step 1
         predicted_risk = predict_risk(route_features)
 
-        # Step 2
         hotspot_count = check_route_hotspots(
             data.route_coordinates
         )
 
-        # Step 3
         final_risk, penalty, severity = adjust_risk(
             predicted_risk,
             hotspot_count
         )
 
-        # Step 3b – apply per-route adjustment so explanation matches the displayed risk
-        final_risk = max(0.0, min(1.0, final_risk + data.adjustment))
+        final_risk = max(0.0, min(1.0, final_risk))
+
         severity = calculate_severity(final_risk)
 
-        # Step 4
         explanation = explain_route(
             weather=data.weather,
             visibility=data.visibility,
             peak_hour="Yes" if data.is_peak_hour else "No",
-            road_type=data.road_type,
+            road_type=road_type,
             predicted_risk=round(final_risk, 2),
             hotspot_count=hotspot_count
         )
@@ -119,7 +102,7 @@ def predict_route(data: RouteRequest):
             "severity": severity,
             "penalty": penalty,
             "final_risk": round(final_risk, 3),
-            "explanation": explanation
+            "explanation": explanation,
         }
 
     except Exception as e:
