@@ -50,6 +50,8 @@ class RouteRequest(BaseModel):
 
     route_coordinates: List[List[float]]
 
+    adjustment: float = 0.0
+
 
 # ----------------------------------------
 # Health Check
@@ -98,7 +100,7 @@ def predict_route(data: RouteRequest):
         )
 
         # Step 3b – apply per-route adjustment so explanation matches the displayed risk
-        final_risk = max(0.0, min(1.0, final_risk))
+        final_risk = max(0.0, min(1.0, final_risk + data.adjustment))
         severity = calculate_severity(final_risk)
 
         # Step 4

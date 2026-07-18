@@ -60,31 +60,40 @@ function wmoToCondition(code) {
   return { label: "Unknown", icon: "clear" }
 }
 
+const weatherCache = new Map()
 async function getWeather(lat, lon) {
+  const key = `${lat.toFixed(2)},${lon.toFixed(2)}`
+  if (weatherCache.has(key)) return weatherCache.get(key)
+
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m,uv_index&timezone=auto`;
 
   try {
-    console.log("🌦️ WEATHER REQUEST:", lat, lon);
-    console.log("🌐 URL:", url);
-
     const res = await fetch(url);
 
-    console.log("🌦️ WEATHER STATUS:", res.status);
+    if (!res.ok) {
+      console.warn(`⚠️ WEATHER ${res.status} for ${lat},${lon} – using defaults`);
+      const fallback = {
+        temperature: 30, feelsLike: 32, humidity: 50, precipitation: 0,
+        windSpeed: 10, uvIndex: 5, condition: "Clear", icon: "clear", weatherCode: 0,
+      };
+      weatherCache.set(key, fallback);
+      return fallback;
+    }
 
     const data = await res.json();
 
-    console.log("🌦️ WEATHER RESPONSE:", JSON.stringify(data));
-
     if (!data || !data.current) {
-      console.log("❌ CURRENT WEATHER MISSING");
-      return null;
+      console.warn("⚠️ WEATHER response missing current – using defaults");
+      const fallback = {
+        temperature: 30, feelsLike: 32, humidity: 50, precipitation: 0,
+        windSpeed: 10, uvIndex: 5, condition: "Clear", icon: "clear", weatherCode: 0,
+      };
+      weatherCache.set(key, fallback);
+      return fallback;
     }
 
     const cond = wmoToCondition(data.current.weather_code);
-
-    console.log("✅ WEATHER CONDITION:", cond);
-
-    return {
+    const result = {
       temperature: data.current.temperature_2m,
       feelsLike: data.current.apparent_temperature,
       humidity: data.current.relative_humidity_2m,
@@ -95,10 +104,17 @@ async function getWeather(lat, lon) {
       icon: cond.icon,
       weatherCode: data.current.weather_code,
     };
+    weatherCache.set(key, result);
+    return result;
 
   } catch (error) {
-    console.error("❌ WEATHER ERROR:", error);
-    return null;
+    console.warn("⚠️ WEATHER FETCH ERROR – using defaults:", error.message);
+    const fallback = {
+      temperature: 30, feelsLike: 32, humidity: 50, precipitation: 0,
+      windSpeed: 10, uvIndex: 5, condition: "Clear", icon: "clear", weatherCode: 0,
+    };
+    weatherCache.set(key, fallback);
+    return fallback;
   }
 }
 
@@ -228,7 +244,11 @@ app.post("/api/routes", async (req, res) => {
     (weather?.path?.condition || "").toLowerCase();
     
   const visibility =
-    rawCondition.includes("fog")
+    rawCondition.includes("fog") ||
+    rawCondition.includes("rain") ||
+    rawCondition.includes("drizzle") ||
+    rawCondition.includes("thunderstorm") ||
+    rawCondition.includes("snow")
         ? "low"
         : "high";
 
@@ -267,6 +287,7 @@ function mapTrafficSignal(count) {
         ? mapRoadType(segments[0].type)
         : "urban";
       const weightedLanes = segments.reduce((s, seg) => s + (seg.lanes || 2) * (seg.distanceKm || 0), 0) / totalDist;
+      const adj = computeRouteAdjustment(route);
       const mlPayload = {
         day_of_week: dayOfWeek,
         road_type: weightedRoadType,
@@ -282,6 +303,7 @@ function mapTrafficSignal(count) {
         route_coordinates: route.coords.map(
           ([lon, lat]) => [lat, lon]
         ),
+        adjustment: adj,
       };
       try {
         const mlRes = await axios.post(`${ML_API}/predict`, mlPayload);
@@ -294,8 +316,31 @@ function mapTrafficSignal(count) {
   );
 
 
- const routesWithPredictions = routeResults
-  .map((route, i) => ({
+// Per-route adjustment – factors the ML model can't see
+function computeRouteAdjustment(route) {
+  const distKm = route.distanceKm || 0;
+  const roadSegments = route.details?.roadSegments || [];
+  const trafficSignals = route.details?.trafficSignals || 0;
+
+  let highwayDistKm = 0;
+  for (const s of roadSegments) {
+    const d = s.distanceKm || 0;
+    if (s.type === "Highway" || s.type === "Flyover") highwayDistKm += d;
+  }
+  const highwayRatio = distKm > 0 ? highwayDistKm / distKm : 0;
+  const signalDensity = distKm > 0 ? trafficSignals / distKm : 0;
+  const segmentCount = roadSegments.length;
+
+  let adj = 0;
+  adj -= highwayRatio * 0.06;
+  adj += Math.min(signalDensity, 0.5) * 0.04;
+  adj += Math.min(segmentCount / 20, 0.5) * 0.04;
+  adj += Math.max(0, (distKm - 50) * 0.0001);
+  return adj;
+}
+
+  const routesWithPredictions = routeResults
+   .map((route, i) => ({
     ...route,
     prediction: routePredictions[i],
   }))
@@ -305,15 +350,24 @@ function mapTrafficSignal(count) {
       a.prediction.final_risk -
       b.prediction.final_risk
   )
-  .map((route, index) => ({
-    ...route,
-    key:
-      index === 0
-        ? "safe"
-        : index === 1
-        ? "moderate"
-        : "risky",
-  }));
+  .map((route, _index, sorted) => {
+    const risk = route.prediction.final_risk;
+    const band = risk <= 0.35 ? 0 : risk <= 0.65 ? 1 : 2;
+    const getBand = r => r.prediction.final_risk <= 0.35 ? 0 : r.prediction.final_risk <= 0.65 ? 1 : 2;
+    const bands = sorted.map(getBand);
+    const allSame = bands.every(b => b === bands[0]);
+    let key;
+    if (allSame) {
+      if (bands[0] === 2) {
+        key = _index === 0 ? "moderate" : "risky";
+      } else {
+        key = _index === 0 ? "safe" : _index === 1 ? "moderate" : "risky";
+      }
+    } else {
+      key = band === 0 ? "safe" : band === 1 ? "moderate" : "risky";
+    }
+    return { ...route, key };
+  });
 
   res.json({
     sourceCoords: srcCoords,

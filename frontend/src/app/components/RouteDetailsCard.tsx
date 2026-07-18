@@ -140,7 +140,7 @@ export default function RouteDetailsCard({ route, ready, source, destination, so
         <div className="grid grid-cols-3 gap-2">
           <GlassBox>
             <p className="text-[9px] uppercase tracking-wide mb-0.5" style={{ color: "var(--txt-muted)" }}>Risk</p>
-            <p className="text-sm font-bold mono" style={{ color: riskValue !== null && riskValue < 33 ? "#22c55e" : riskValue !== null && riskValue < 66 ? "#f59e0b" : "#ef4444" }}>
+            <p className="text-sm font-bold mono" style={{ color: riskValue !== null && riskValue <= 35 ? "#22c55e" : riskValue !== null && riskValue <= 65 ? "#f59e0b" : "#ef4444" }}>
               {riskValue !== null ? `${riskValue}/100` : "N/A"}
             </p>
           </GlassBox>

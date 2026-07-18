@@ -133,6 +133,12 @@ const ROUTE_COLORS: Record<string, string> = {
   risky: "#ef4444",
 }
 
+function riskLabel(finalRisk: number): { route: string; chip: string; chipColor: "green" | "amber" | "red" } {
+  if (finalRisk <= 0.35) return { route: "Safe Route", chip: "Low Risk", chipColor: "green" }
+  if (finalRisk <= 0.65) return { route: "Moderate Route", chip: "Moderate", chipColor: "amber" }
+  return { route: "Risky Route", chip: "High Risk", chipColor: "red" }
+}
+
 // ─── Utilities ──────────────────────────────────────────────────────────────
 function useTypingEffect(text: string, speed = 18, active = false) {
   const [out, setOut] = useState("")
@@ -235,7 +241,7 @@ function AIPanel({ sel, ready, onClose, routes, prediction, weather }: {
 }) {
   const p = prediction
   const explanation = useTypingEffect(p?.explanation || "", 18, ready && !!p?.explanation)
-  const safeRoute = routes.find(r => r.key === "safe")
+  const bestRoute = routes[0]
   const riskValue = p ? Math.round(p.final_risk * 100) : 0
 
   return (
@@ -265,7 +271,7 @@ function AIPanel({ sel, ready, onClose, routes, prediction, weather }: {
             <div>
               <div className="flex items-center justify-between mb-2">
                 <p className="text-[10px] font-bold uppercase tracking-wider" style={{ color: "var(--txt-muted)" }}>Risk Score</p>
-                <Chip color={riskValue < 33 ? "green" : riskValue < 66 ? "amber" : "red"}>{p.severity}</Chip>
+                <Chip color={riskValue <= 35 ? "green" : riskValue <= 65 ? "amber" : "red"}>{p.severity}</Chip>
               </div>
               <div className="flex items-center gap-3">
                 <RiskGauge value={riskValue} />
@@ -287,17 +293,22 @@ function AIPanel({ sel, ready, onClose, routes, prediction, weather }: {
             </div>
 
             {/* Best Route */}
-            {safeRoute && (
-              <div className="p-3 rounded-xl"
-                style={{ background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.22)" }}>
-                <div className="flex items-center gap-2 mb-1">
-                  <CheckCircle className="w-4 h-4 text-green-400" />
-                  <span className="text-[10px] font-bold text-green-400 uppercase tracking-wide">Recommended</span>
+            {bestRoute && (() => {
+              const br = bestRoute
+              const brl = br.prediction ? riskLabel(br.prediction.final_risk) : null
+              const brLabel = brl ? brl.route : "Best Route"
+              return (
+                <div className="p-3 rounded-xl"
+                  style={{ background: `rgba(34,197,94,0.08)`, border: `1px solid rgba(34,197,94,0.22)` }}>
+                  <div className="flex items-center gap-2 mb-1">
+                    <CheckCircle className="w-4 h-4 text-green-400" />
+                    <span className="text-[10px] font-bold text-green-400 uppercase tracking-wide">Recommended</span>
+                  </div>
+                  <p className="text-sm font-semibold" style={{ color: "var(--txt-primary)" }}>{brLabel}</p>
+                  <p className="text-[10px] mt-0.5 mono" style={{ color: "var(--txt-muted)" }}>{br.distance} · {br.duration} · Risk {riskValue}/100</p>
                 </div>
-                <p className="text-sm font-semibold" style={{ color: "var(--txt-primary)" }}>Safe Route</p>
-                <p className="text-[10px] mt-0.5 mono" style={{ color: "var(--txt-muted)" }}>{safeRoute.distance} · {safeRoute.duration} · Risk {riskValue}/100</p>
-              </div>
-            )}
+              )
+            })()}
 
             {/* AI Explanation */}
             {p.explanation && (
@@ -360,7 +371,7 @@ function RouteComparisonCard({ routes, sel }: { routes: RouteData[]; sel: RouteK
       {routes.map((r, idx) => {
         const active = sel === r.key
         const color = ROUTE_COLORS[r.key] || "#6366f1"
-        const label = r.key === "safe" ? "Safe Route" : r.key === "moderate" ? "Moderate Route" : "Risky Route"
+        const rl = r.prediction ? riskLabel(r.prediction.final_risk) : null
         return (
           <motion.div key={r.key}
             initial={{ opacity: 0, x: -18 }}
@@ -375,8 +386,8 @@ function RouteComparisonCard({ routes, sel }: { routes: RouteData[]; sel: RouteK
               style={{ background: color, boxShadow: `0 0 8px ${color}80` }} />
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-0.5">
-                <span className="text-sm font-semibold" style={{ color: "var(--txt-primary)" }}>{label}</span>
-                <Chip color={r.key === "safe" ? "green" : r.key === "moderate" ? "amber" : "red"}>{r.key === "safe" ? "Low Risk" : r.key === "moderate" ? "Moderate" : "High Risk"}</Chip>
+                <span className="text-sm font-semibold" style={{ color: "var(--txt-primary)" }}>{rl ? rl.route : r.key}</span>
+                {rl && <Chip color={rl.chipColor}>{rl.chip}</Chip>}
               </div>
               <p className="text-[10px] mono" style={{ color: "var(--txt-muted)" }}>
                 {r.distance} · {r.duration}
@@ -413,11 +424,11 @@ function MLPredictionCard({ prediction }: { prediction: PredictionResult | null 
           <p className="text-[10px] uppercase tracking-wide mb-1" style={{ color: "var(--txt-muted)" }}>ML Risk Score</p>
           <div className="flex items-baseline gap-1">
             <span className="text-4xl font-extrabold mono"
-              style={{ color: riskValue < 33 ? "#22c55e" : riskValue < 66 ? "#f59e0b" : "#ef4444" }}>{riskValue}</span>
+              style={{ color: riskValue <= 35 ? "#22c55e" : riskValue <= 65 ? "#f59e0b" : "#ef4444" }}>{riskValue}</span>
             <span className="text-sm" style={{ color: "var(--txt-muted)" }}>/ 100</span>
           </div>
           <div className="flex gap-2 mt-2">
-            <Chip color={riskValue < 33 ? "green" : riskValue < 66 ? "amber" : "red"}>{prediction.severity}</Chip>
+            <Chip color={riskValue <= 35 ? "green" : riskValue <= 65 ? "amber" : "red"}>{prediction.severity}</Chip>
             <Chip color="purple">{prediction.hotspot_count} hotspot{prediction.hotspot_count !== 1 ? "s" : ""}</Chip>
           </div>
         </div>
@@ -510,7 +521,7 @@ export default function App() {
       setSourceCoords(data.sourceCoords)
       setDestCoords(data.destCoords)
       setWeather(data.weather?.destination || data.weather?.path || null)
-      setSel("safe")
+      setSel(data.routes[0].key)
       setBusy(false)
       setReady(true)
       setAIOpen(true)

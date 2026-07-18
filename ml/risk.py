@@ -17,9 +17,9 @@ def calculate_severity(final_risk):
     """
     Assign severity level based on the final risk score.
     """
-    if final_risk < 0.35:
+    if final_risk <= 0.35:
         return "Low"
-    elif final_risk < 0.65:
+    elif final_risk <= 0.65:
         return "Medium"
     else:
         return "High"
