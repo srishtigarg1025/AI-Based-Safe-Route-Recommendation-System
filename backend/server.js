@@ -176,14 +176,14 @@ app.post("/api/routes", async (req, res) => {
       }
 
       const roadSegments = [...uniqueRoads.values()]
-        .sort((a, b) => b.distance - a.distance)
-        .map(s => ({
-          road: s.road,
-          distance: `${(s.distance / 1000).toFixed(1)} km`,
-          distanceKm: parseFloat((s.distance / 1000).toFixed(1)),
-          type: s.type,
-          lanes: s.lanes,
-        }))
+      .map((s, index) => ({
+  segmentIndex: index,
+  road: s.road,
+  distance: `${(s.distance / 1000).toFixed(1)} km`,
+  distanceKm: parseFloat((s.distance / 1000).toFixed(1)),
+  type: s.type,
+  lanes: s.lanes,
+}))
 
       const trafficSignals = Math.max(allSteps.length - 1, 0)
 
@@ -282,21 +282,7 @@ function mapTrafficSignal(count) {
     routeResults.map(async (route) => {
       const segments = route.details.roadSegments || [];
       // Weighted average by distance – better represents the whole route
-      const totalDist = segments.reduce((s, seg) => s + (seg.distanceKm || 0), 0) || 1;
-      const roadTypeDistance = {};
-
-      for (const seg of segments) {
-  const type = mapRoadType(seg.type);
-
-  roadTypeDistance[type] =
-    (roadTypeDistance[type] || 0) + seg.distanceKm;
-}
-
-const dominantRoadType = Object.entries(roadTypeDistance)
-  .sort((a, b) => b[1] - a[1])[0]?.[0] || "urban";
-    console.log("Road Type Distance:", roadTypeDistance);
-      const weightedLanes = segments.reduce((s, seg) => s + (seg.lanes || 2) * (seg.distanceKm || 0), 0) / totalDist;
-      const adj = computeRouteAdjustment(route);
+      
       const mlPayload = {
         day_of_week: dayOfWeek,
         road_type: dominantRoadType,
