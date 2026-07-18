@@ -305,6 +305,13 @@ function mapTrafficSignal(count) {
         ),
         adjustment: adj,
       };
+      console.log("\n========== ROUTE DEBUG ==========");
+      console.log("Route:", route.label);
+      console.log("Road Type:", weightedRoadType);
+      console.log("Weighted Lanes:", Math.round(weightedLanes));
+      console.log("Traffic Signals:", route.details.trafficSignals);
+      console.log("Adjustment:", adj);
+      console.log("=================================\n");
       try {
         const mlRes = await axios.post(`${ML_API}/predict`, mlPayload);
         return mlRes.data;
