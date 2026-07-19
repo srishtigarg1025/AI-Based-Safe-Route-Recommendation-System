@@ -3,8 +3,8 @@ import numpy as np
 import pandas as pd
 from sklearn.cluster import DBSCAN
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATA_PATH = os.path.join(BASE_DIR, "dataset", "indian_roads_dataset.csv")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_PATH = os.path.join(BASE_DIR, "..", "dataset", "indian_roads_dataset.csv")
 df = pd.read_csv(DATA_PATH)
 
 coordinates = df[["latitude", "longitude"]].copy()
@@ -39,7 +39,10 @@ hotspots = (
     .reset_index()
 )
 
-OUTPUT_PATH = os.path.join(BASE_DIR, "outputs", "hotspots.csv")
+OUTPUT_DIR = os.path.join(BASE_DIR, "outputs")
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+OUTPUT_PATH = os.path.join(OUTPUT_DIR,"hotspots.csv")
 hotspots.to_csv(OUTPUT_PATH, index=False)
 
 print(f"Hotspots Found : {len(hotspots)}")
