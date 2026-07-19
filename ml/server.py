@@ -41,6 +41,9 @@ class RouteRequest(BaseModel):
     temperature: float
     is_peak_hour: int
 
+    latitude: float
+    longitude: float
+
     route_coordinates: List[List[float]]
 
 
@@ -70,6 +73,8 @@ def predict_route(data: RouteRequest):
             "traffic_signal": data.traffic_signal,
             "temperature": data.temperature,
             "is_peak_hour": data.is_peak_hour,
+            "latitude": data.latitude,
+            "longitude": data.longitude,
         }
 
         predicted_risk = predict_risk(route_features)

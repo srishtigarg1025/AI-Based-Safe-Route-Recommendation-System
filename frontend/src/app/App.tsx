@@ -10,7 +10,7 @@ import {
 import MapView from "./components/MapView"
 import RouteDetailsCard from "./components/RouteDetailsCard"
 
-const API_BASE = "https://ai-based-safe-route-recommendation.onrender.com"
+const API_BASE = "http://localhost:3001"
 
 interface SegmentPrediction {
   segmentIndex: number
@@ -563,6 +563,10 @@ export default function App() {
   const selectedRoute = routes.find(r => r.key === sel) || null
   const activePrediction = selectedRoute?.prediction || null
 
+  const riskVals2 = routes.map(r => r.prediction?.final_risk).filter((r): r is number => r != null)
+  const minRisk2 = riskVals2.length > 0 ? Math.min(...riskVals2) : 0
+  const allSame2 = riskVals2.length > 0 && riskVals2.every(r => Math.abs(r - riskVals2[0]) < 0.001)
+
   const cards = [
     { id: "cmp", title: "Route Comparison",     Icon: Route,        accent: "#3b82f6", content: <RouteComparisonCard routes={routes} sel={sel} /> },
     { id: "ml",  title: "ML Prediction",         Icon: Brain,        accent: "#8b5cf6", content: <MLPredictionCard prediction={activePrediction} /> },
@@ -802,12 +806,21 @@ export default function App() {
                     {(["safe", "moderate", "risky"] as RouteKey[]).map(k => {
                       const r = routes.find(rr => rr.key === k)
                       if (!r) return null
+                      const isSafest = r.prediction?.final_risk != null && Math.abs(r.prediction.final_risk - minRisk2) < 0.001
+                      const showRec = k === "safe" && isSafest
                       return (
                         <button key={k} onClick={() => setSel(k)}
                           className="flex items-center gap-2 py-1 transition-all w-full"
                           style={{ opacity: sel === k ? 1 : 0.45 }}>
                           <div className="w-5 h-1.5 rounded-full" style={{ background: ROUTE_COLORS[k] || "#6366f1" }} />
-                          <span className="text-[10px] font-medium text-left" style={{ color: "rgba(255,255,255,0.75)" }}>{r.label}</span>
+                          <span className="text-[10px] font-medium text-left" style={{ color: "rgba(255,255,255,0.75)" }}>
+                            {r.label}
+                            {showRec && (
+                              allSame2
+                                ? <span className="text-[9px] ml-1 text-green-300">(any route works)</span>
+                                : <span className="text-[9px] ml-1 text-green-300">★ Recommended</span>
+                            )}
+                          </span>
                         </button>
                       )
                     })}

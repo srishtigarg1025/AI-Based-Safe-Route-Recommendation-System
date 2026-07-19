@@ -12,7 +12,7 @@ dotenv.config()
 
 const ML_API =
   process.env.ML_API_URL ||
-  "https://ai-based-safe-route-recommendation-system.onrender.com"
+  "http://localhost:8000"
 
 
 const app = express()
@@ -462,6 +462,56 @@ function mapWeather(condition) {
 
 
 // ==================================================
+// RISK WEIGHT FACTORS
+// ==================================================
+
+const ROAD_WEIGHT = {
+  highway: 0.7,
+  flyover: 0.75,
+  rural: 0.85,
+  arterial: 0.9,
+  collector: 0.95,
+  local: 1.0,
+}
+
+const SEVERITY_WEIGHT = {
+  low: 1.0,
+  medium: 2.0,
+  high: 4.0,
+}
+
+const VISIBILITY_WEIGHT = {
+  high: 1.0,
+  medium: 1.5,
+  low: 2.5,
+}
+
+const WEATHER_WEIGHT = {
+  clear: 1.0,
+  rain: 1.5,
+  fog: 2.0,
+}
+
+function computeSegmentWeight(segment, hour) {
+  const type = (segment.type || "").toLowerCase()
+  const severity = (segment.severity || "low").toLowerCase()
+  const segWeather = (segment.segWeather || "clear").toLowerCase()
+  const segVisibility = (segment.segVisibility || "high").toLowerCase()
+
+  const severityW = SEVERITY_WEIGHT[severity] || 1.0
+  const hotspotW = 1 + (segment.hotspot_count || 0) * 0.2
+  const visibilityW = VISIBILITY_WEIGHT[segVisibility] || 1.0
+  const weatherW = WEATHER_WEIGHT[segWeather] || 1.0
+  const roadW = ROAD_WEIGHT[type] || 1.0
+  const signalW = segment.trafficSignal ? 1.1 : 1.0
+  const laneW = 1 + (segment.lanes || 2) * 0.02
+  const timeW = (hour < 6 || hour > 20) ? 1.15 : 1.0
+
+  return segment.distanceKm * severityW * hotspotW * visibilityW * weatherW * roadW * signalW * laneW * timeW
+}
+
+
+// ==================================================
 // ROUTE API
 // ==================================================
 
@@ -860,6 +910,20 @@ app.post("/api/routes", async (req, res) => {
                       is_peak_hour:
                         isPeakHour,
 
+                      latitude:
+                        segment.coords.reduce(
+                          (s, c) => s + c[1], 0
+                        ) / Math.max(
+                          segment.coords.length, 1
+                        ),
+
+                      longitude:
+                        segment.coords.reduce(
+                          (s, c) => s + c[0], 0
+                        ) / Math.max(
+                          segment.coords.length, 1
+                        ),
+
                       route_coordinates:
                         segment.coords.map(
                           ([lon, lat]) =>
@@ -927,6 +991,20 @@ app.post("/api/routes", async (req, res) => {
                         distanceKm:
                           segment.distanceKm,
 
+                        trafficSignal:
+                          segment.trafficSignal,
+
+                        lanes:
+                          segment.lanes,
+
+                        segWeather:
+                          mapWeather(
+                            weather?.path?.condition
+                          ),
+
+                        segVisibility:
+                          visibility,
+
                         ...mlRes.data,
                       }
 
@@ -957,51 +1035,55 @@ app.post("/api/routes", async (req, res) => {
 
 
             // ----------------------------------
-            // DISTANCE-WEIGHTED RISK
+            // MULTI-FACTOR WEIGHTED RISK
             // ----------------------------------
 
-            const totalDistance =
+            const weightedData =
               validSegments.reduce(
-                (sum, segment) =>
-                  sum + segment.distanceKm,
-                0
+                (acc, seg) => {
+                  const w =
+                    computeSegmentWeight(
+                      seg, hour
+                    )
+                  return {
+                    weightSum:
+                      acc.weightSum + w,
+                    riskSum:
+                      acc.riskSum +
+                      seg.final_risk * w,
+                    predRiskSum:
+                      acc.predRiskSum +
+                      seg.predicted_risk * w,
+                    penaltySum:
+                      acc.penaltySum +
+                      seg.penalty * w,
+                  }
+                },
+                {
+                  weightSum: 0,
+                  riskSum: 0,
+                  predRiskSum: 0,
+                  penaltySum: 0,
+                }
               )
+
+            const totalWeight =
+              weightedData.weightSum || 1
 
 
             const weightedRisk =
-              validSegments.reduce(
-                (sum, segment) =>
-                  sum +
-                  (
-                    segment.final_risk *
-                    segment.distanceKm
-                  ),
-                0
-              ) / totalDistance
+              weightedData.riskSum /
+              totalWeight
 
 
             const weightedPredictedRisk =
-              validSegments.reduce(
-                (sum, segment) =>
-                  sum +
-                  (
-                    segment.predicted_risk *
-                    segment.distanceKm
-                  ),
-                0
-              ) / totalDistance
+              weightedData.predRiskSum /
+              totalWeight
 
 
             const weightedPenalty =
-              validSegments.reduce(
-                (sum, segment) =>
-                  sum +
-                  (
-                    segment.penalty *
-                    segment.distanceKm
-                  ),
-                0
-              ) / totalDistance
+              weightedData.penaltySum /
+              totalWeight
 
 
             const totalHotspots =

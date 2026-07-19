@@ -1,5 +1,5 @@
 import { useEffect } from "react"
-import { MapContainer, TileLayer, Marker, Polyline, Popup, useMap } from "react-leaflet"
+import { MapContainer, TileLayer, Marker, Polyline, Popup, Tooltip, useMap } from "react-leaflet"
 import L from "leaflet"
 import "leaflet/dist/leaflet.css"
 
@@ -148,7 +148,7 @@ export default function MapView({ source, destination, ready, routes, selected, 
                       pathOptions={{ color, weight: 7, opacity: 0.95 }}
                       eventHandlers={{ click: () => onSelect(route.key) }}
                     >
-                      <Popup>
+                      <Tooltip>
                         <div style={{ fontFamily: "system-ui", fontSize: 11, minWidth: 160, lineHeight: 1.6 }}>
                           <strong style={{ color }}>{seg.road || "Unnamed Road"}</strong>
                           <br />
@@ -168,7 +168,7 @@ export default function MapView({ source, destination, ready, routes, selected, 
                             </>
                           )}
                         </div>
-                      </Popup>
+                      </Tooltip>
                     </Polyline>
                   )
                 })}
@@ -184,13 +184,15 @@ export default function MapView({ source, destination, ready, routes, selected, 
               pathOptions={{ ...style, opacity: 0.4 }}
               eventHandlers={{ click: () => onSelect(route.key) }}
             >
-              <Popup>
+              <Tooltip>
                 <div style={{ fontFamily: "system-ui", fontSize: 12, minWidth: 140 }}>
                   <strong style={{ color: style.color }}>{route.label}</strong>
                   <br />
                   {route.distance} · {route.duration}
+                  <br />
+                  <span style={{ color: "#888", fontSize: 10 }}>Click to select this route</span>
                 </div>
-              </Popup>
+              </Tooltip>
             </Polyline>
           )
         })}
