@@ -10,7 +10,7 @@ dotenv.config()
 // CONFIG
 // ==================================================
 
-const ML_API = "https://ai-based-safe-route-recommendation-system.onrender.com"
+const ML_API = "http://localhost:8000"
 
 const app = express()
 
@@ -922,7 +922,7 @@ app.post("/api/routes", async (req, res) => {
                         ),
 
                       route_coordinates:
-                        segment.coords.map(
+                        route.coords.map(
                           ([lon, lat]) =>
                             [lat, lon]
                         ),
@@ -1079,17 +1079,10 @@ app.post("/api/routes", async (req, res) => {
 
 
             const weightedPenalty =
-              weightedData.penaltySum /
-              totalWeight
-
+              validSegments[0]?.penalty || 0
 
             const totalHotspots =
-              validSegments.reduce(
-                (sum, segment) =>
-                  sum +
-                  segment.hotspot_count,
-                0
-              )
+              validSegments[0]?.hotspot_count || 0
 
 
             const finalRisk =
