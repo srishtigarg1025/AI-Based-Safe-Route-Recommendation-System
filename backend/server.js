@@ -10,10 +10,7 @@ dotenv.config()
 // CONFIG
 // ==================================================
 
-const ML_API =
-  process.env.ML_API_URL ||
-  "http://localhost:8000"
-
+const ML_API = "https://ai-based-safe-route-recommendation-system.onrender.com"
 
 const app = express()
 
@@ -1108,37 +1105,16 @@ app.post("/api/routes", async (req, res) => {
                 : finalRisk <= 0.65
                   ? "Medium"
                   : "High"
-
-
+            const explanation =  validSegments.find(s => s.explanation)?.explanation ||"No explanation available.";
+    
             return {
-
-              predicted_risk:
-                Number(
-                  weightedPredictedRisk.toFixed(3)
-                ),
-
-              hotspot_count:
-                totalHotspots,
-
-              penalty:
-                Number(
-                  weightedPenalty.toFixed(3)
-                ),
-
-              final_risk:
-                Number(
-                  finalRisk.toFixed(3)
-                ),
-
+              predicted_risk: Number(weightedPredictedRisk.toFixed(3)),
+              hotspot_count: totalHotspots,
+              penalty: Number(weightedPenalty.toFixed(3)),
+              final_risk: Number(finalRisk.toFixed(3)),
               severity,
-
-              explanation:
-                `Route risk is calculated from ` +
-                `${validSegments.length} road segments ` +
-                `using distance-weighted risk.`,
-
-              segment_predictions:
-                validSegments,
+              explanation,
+              segment_predictions: validSegments, 
             }
           }
         )
