@@ -216,11 +216,3 @@ python3 hotspot.py
 
 This reads the dataset, performs DBSCAN on lat/lon coordinates with haversine distance, and writes cluster centroids to `ml/outputs/hotspots.csv`.
 
-## Retraining the Model
-
-```bash
-cd ml
-python3 retrain.py
-```
-
-The retraining script drops lat/lon columns, encodes categorical features, trains a GradientBoostingRegressor, and saves the model + preprocessor. No spatial features leak into the ML pipeline.
