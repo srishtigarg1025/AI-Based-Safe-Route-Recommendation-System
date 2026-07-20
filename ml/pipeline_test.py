@@ -63,10 +63,9 @@ hotspot_count = check_route_hotspots(route_coordinates)
 # Step 3 : Adjust Risk
 # -------------------------------------------------
 
-final_risk, penalty, severity = adjust_risk(
-    predicted_risk,
-    hotspot_count
-)
+hotspot_penalty = penalty  # from adjust_risk
+final_risk = min(predicted_risk + hotspot_penalty, 1.0)
+severity = "Low" if final_risk <= 0.35 else "Medium" if final_risk <= 0.65 else "High"
 
 
 # -------------------------------------------------
@@ -78,8 +77,9 @@ explanation = explain_route(
     visibility=route_features["visibility"],
     peak_hour="Yes" if route_features["is_peak_hour"] else "No",
     road_type=route_features["road_type"],
-    predicted_risk=round(final_risk, 2),
-    hotspot_count=hotspot_count
+    contextual_risk=round(predicted_risk, 2),
+    hotspot_count=hotspot_count,
+    hotspot_penalty=hotspot_penalty,
 )
 
 

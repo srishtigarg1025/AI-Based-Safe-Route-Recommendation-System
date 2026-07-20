@@ -5,7 +5,7 @@ from shapely.geometry import LineString, Point
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 HOTSPOT_PATH = os.path.join(BASE_DIR, "outputs", "hotspots.csv")
 
-def check_route_hotspots(route_coordinates: list[tuple[float, float]]) -> int:
+def check_route_hotspots(route_coordinates: list[tuple[float, float]], radius_deg: float = 0.002) -> int:
 
     print("\n========== HOTSPOT DEBUG ==========")
     print("HOTSPOT PATH:", HOTSPOT_PATH)
@@ -23,7 +23,7 @@ def check_route_hotspots(route_coordinates: list[tuple[float, float]]) -> int:
 
         hotspot = Point(row["longitude"], row["latitude"])
 
-        if route.distance(hotspot) <= 0.005:
+        if route.distance(hotspot) <= radius_deg:
             hotspot_count += 1
 
     print("Hotspots Found:", hotspot_count)

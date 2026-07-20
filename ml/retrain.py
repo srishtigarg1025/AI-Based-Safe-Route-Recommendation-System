@@ -19,7 +19,9 @@ drop_cols = [
     "casualties",
     "accident_severity",
     "cause",
-    "traffic_density"
+    "traffic_density",
+    "latitude",
+    "longitude",
 ]
 
 df_ml = df.drop(columns=drop_cols)

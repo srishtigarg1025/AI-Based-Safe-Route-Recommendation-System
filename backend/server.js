@@ -496,7 +496,7 @@ function computeSegmentWeight(segment, hour) {
   const segVisibility = (segment.segVisibility || "high").toLowerCase()
 
   const severityW = SEVERITY_WEIGHT[severity] || 1.0
-  const hotspotW = 1 + (segment.hotspot_count || 0) * 0.2
+  const hotspotW = 1 + (segment.segment_hotspot_count || 0) * 0.3
   const visibilityW = VISIBILITY_WEIGHT[segVisibility] || 1.0
   const weatherW = WEATHER_WEIGHT[segWeather] || 1.0
   const roadW = ROAD_WEIGHT[type] || 1.0
@@ -907,22 +907,14 @@ app.post("/api/routes", async (req, res) => {
                       is_peak_hour:
                         isPeakHour,
 
-                      latitude:
-                        segment.coords.reduce(
-                          (s, c) => s + c[1], 0
-                        ) / Math.max(
-                          segment.coords.length, 1
-                        ),
-
-                      longitude:
-                        segment.coords.reduce(
-                          (s, c) => s + c[0], 0
-                        ) / Math.max(
-                          segment.coords.length, 1
-                        ),
-
                       route_coordinates:
                         route.coords.map(
+                          ([lon, lat]) =>
+                            [lat, lon]
+                        ),
+
+                      segment_coordinates:
+                        segment.coords.map(
                           ([lon, lat]) =>
                             [lat, lon]
                         ),
@@ -1032,7 +1024,7 @@ app.post("/api/routes", async (req, res) => {
 
 
             // ----------------------------------
-            // MULTI-FACTOR WEIGHTED RISK
+            // MULTI-FACTOR WEIGHTED CONTEXTUAL RISK
             // ----------------------------------
 
             const weightedData =
@@ -1047,20 +1039,12 @@ app.post("/api/routes", async (req, res) => {
                       acc.weightSum + w,
                     riskSum:
                       acc.riskSum +
-                      seg.final_risk * w,
-                    predRiskSum:
-                      acc.predRiskSum +
                       seg.predicted_risk * w,
-                    penaltySum:
-                      acc.penaltySum +
-                      seg.penalty * w,
                   }
                 },
                 {
                   weightSum: 0,
                   riskSum: 0,
-                  predRiskSum: 0,
-                  penaltySum: 0,
                 }
               )
 
@@ -1068,27 +1052,31 @@ app.post("/api/routes", async (req, res) => {
               weightedData.weightSum || 1
 
 
-            const weightedRisk =
+            const contextualRisk =
               weightedData.riskSum /
               totalWeight
 
 
-            const weightedPredictedRisk =
-              weightedData.predRiskSum /
-              totalWeight
-
-
-            const weightedPenalty =
-              validSegments[0]?.penalty || 0
-
-            const totalHotspots =
-              validSegments[0]?.hotspot_count || 0
+            const hotspotPenalty =
+              validSegments[0]?.hotspot_penalty || 0
 
 
             const finalRisk =
               Math.min(
-                weightedRisk,
+                contextualRisk +
+                hotspotPenalty,
                 1.0
+              )
+
+
+            const totalHotspots =
+              validSegments[0]?.hotspot_count || 0
+
+            const totalSegmentHotspots =
+              validSegments.reduce(
+                (sum, seg) =>
+                  sum + (seg.segment_hotspot_count || 0),
+                0
               )
 
 
@@ -1101,9 +1089,10 @@ app.post("/api/routes", async (req, res) => {
             const explanation =  validSegments.find(s => s.explanation)?.explanation ||"No explanation available.";
     
             return {
-              predicted_risk: Number(weightedPredictedRisk.toFixed(3)),
+              predicted_risk: Number(contextualRisk.toFixed(3)),
               hotspot_count: totalHotspots,
-              penalty: Number(weightedPenalty.toFixed(3)),
+              total_segment_hotspots: totalSegmentHotspots,
+              hotspot_penalty: Number(hotspotPenalty.toFixed(3)),
               final_risk: Number(finalRisk.toFixed(3)),
               severity,
               explanation,

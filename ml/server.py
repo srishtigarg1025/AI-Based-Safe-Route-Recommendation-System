@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from predict import predict_risk
 from route_checker import check_route_hotspots
-from risk import adjust_risk, calculate_severity
+from risk import calculate_penalty, calculate_severity
 from explain_route import explain_route
 
 
@@ -41,10 +41,9 @@ class RouteRequest(BaseModel):
     temperature: float
     is_peak_hour: int
 
-    latitude: float
-    longitude: float
-
     route_coordinates: List[List[float]]
+    segment_coordinates: Optional[List[List[float]]] = None
+    hotspot_radius_deg: Optional[float] = None
 
 
 
@@ -73,22 +72,27 @@ def predict_route(data: RouteRequest):
             "traffic_signal": data.traffic_signal,
             "temperature": data.temperature,
             "is_peak_hour": data.is_peak_hour,
-            "latitude": data.latitude,
-            "longitude": data.longitude,
         }
 
         predicted_risk = predict_risk(route_features)
 
+        radius = data.hotspot_radius_deg if data.hotspot_radius_deg is not None else 0.002
+
+        # Route-level hotspot count (for penalty calculation)
         hotspot_count = check_route_hotspots(
-            data.route_coordinates
+            data.route_coordinates, radius
         ) if len(data.route_coordinates) >= 2 else 0
 
-        final_risk, penalty, severity = adjust_risk(
-            predicted_risk,
-            hotspot_count
-        )
+        # Per-segment hotspot count (for display)
+        segment_hotspot_count = 0
+        if data.segment_coordinates and len(data.segment_coordinates) >= 2:
+            segment_hotspot_count = check_route_hotspots(
+                data.segment_coordinates, radius
+            )
 
-        final_risk = max(0.0, min(1.0, final_risk))
+        hotspot_penalty = calculate_penalty(hotspot_count)
+
+        final_risk = min(predicted_risk + hotspot_penalty, 1.0)
 
         severity = calculate_severity(final_risk)
 
@@ -97,15 +101,17 @@ def predict_route(data: RouteRequest):
             visibility=data.visibility,
             peak_hour="Yes" if data.is_peak_hour else "No",
             road_type=road_type,
-            predicted_risk=round(final_risk, 2),
-            hotspot_count=hotspot_count
+            contextual_risk=round(predicted_risk, 2),
+            hotspot_count=hotspot_count,
+            hotspot_penalty=hotspot_penalty,
         )
 
         return {
             "predicted_risk": round(predicted_risk, 3),
             "hotspot_count": hotspot_count,
+            "segment_hotspot_count": segment_hotspot_count,
+            "hotspot_penalty": round(hotspot_penalty, 3),
             "severity": severity,
-            "penalty": penalty,
             "final_risk": round(final_risk, 3),
             "explanation": explanation,
         }
