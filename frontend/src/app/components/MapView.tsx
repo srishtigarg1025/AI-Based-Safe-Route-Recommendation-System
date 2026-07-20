@@ -33,6 +33,7 @@ interface SegmentPrediction {
   severity: string
   penalty: number
   final_risk: number
+  hotspot_penalty: number
   explanation: string
 }
 
@@ -54,14 +55,14 @@ interface RouteData {
     totalSteps: number
   }
   prediction?: {
-    predicted_risk: number
-    hotspot_count: number
-    severity: string
-    penalty: number
-    final_risk: number
-    explanation: string
-    segment_predictions?: SegmentPrediction[]
-  }
+  predicted_risk: number
+  hotspot_count: number
+  total_segment_hotspots: number
+  severity: string
+  final_risk: number
+  hotspot_penalty: number
+  explanation: string
+}
 }
 
 function riskColor(risk: number): string {
@@ -149,7 +150,7 @@ export default function MapView({ source, destination, ready, routes, selected, 
                       eventHandlers={{ click: () => onSelect(route.key) }}
                     >
                       <Tooltip>
-                        <div style={{ fontFamily: "system-ui", fontSize: 11, minWidth: 160, lineHeight: 1.6 }}>
+                        <div style={{ fontFamily: "system-ui", fontSize: 11, minWidth: 160, maxWidth: 260, wordWrap: "break-word", lineHeight: 1.6 }}>
                           <strong style={{ color }}>{seg.road || "Unnamed Road"}</strong>
                           <br />
                           <span style={{ color: "#888" }}>Segment {i + 1}</span>
@@ -162,9 +163,10 @@ export default function MapView({ source, destination, ready, routes, selected, 
                               <br />
                               Severity: {pred.severity}
                               <br />
-                              Hotspots: {pred.hotspot_count}
+                              Hotspots: {pred.segment_hotspot_count > 0
+                                ? `${pred.segment_hotspot_count} nearby`
+                                : "none nearby"}
                               <br />
-                              <span style={{ color: "#888", fontSize: 10 }}>{pred.explanation}</span>
                             </>
                           )}
                         </div>

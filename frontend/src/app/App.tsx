@@ -19,9 +19,10 @@ interface SegmentPrediction {
   distanceKm: number
   predicted_risk: number
   hotspot_count: number
+  segment_hotspot_count: number
   severity: string
-  penalty: number
   final_risk: number
+  hotspot_penalty: number
   explanation: string
 }
 
@@ -58,9 +59,10 @@ interface WeatherData {
 interface PredictionResult {
   predicted_risk: number
   hotspot_count: number
+  total_segment_hotspots: number
   severity: string
-  penalty: number
   final_risk: number
+  hotspot_penalty: number
   explanation: string
   segment_predictions?: SegmentPrediction[]
 }
@@ -351,7 +353,7 @@ function AIPanel({ sel, ready, onClose, routes, prediction, weather }: {
               {[
                 { label: "Severity",   val: p.severity,          color: "text-blue-400" },
                 { label: "Hotspots",   val: `${p.hotspot_count}`, color: "text-purple-400" },
-                { label: "Penalty",    val: `+${(p.penalty * 100).toFixed(0)}%`, color: "text-sky-400" },
+                { label: "Hotspot Penalty",    val: `+${(p.hotspot_penalty * 100).toFixed(0)}%`, color: "text-sky-400" },
                 { label: "Weather",    val: weather?.condition || "N/A", color: "text-amber-400" },
               ].map(({ label, val, color }) => (
                 <div key={label} className="p-2.5 rounded-xl"
@@ -368,8 +370,18 @@ function AIPanel({ sel, ready, onClose, routes, prediction, weather }: {
                 style={{ background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)" }}>
                 <p className="text-[10px] font-medium" style={{ color: "var(--txt-secondary)" }}>
                   Route passes through <strong className="text-amber-400">{p.hotspot_count} accident hotspot{p.hotspot_count !== 1 ? "s" : ""}</strong>.
-                  Risk adjusted by +{(p.penalty * 100).toFixed(0)}%.
+                  +{(p.hotspot_penalty * 100).toFixed(0)}% spatial penalty added.
                 </p>
+                {p.segment_predictions && p.segment_predictions.some(s => s.segment_hotspot_count > 0) && (
+                  <div className="mt-2 space-y-1">
+                    <p className="text-[9px] font-semibold uppercase tracking-wide" style={{ color: "var(--txt-muted)" }}>Per Segment</p>
+                    {p.segment_predictions.filter(s => s.segment_hotspot_count > 0).map(s => (
+                      <p key={s.segmentIndex} className="text-[9px]" style={{ color: "var(--txt-secondary)" }}>
+                        Segment {s.segmentIndex + 1} ({s.road}): {s.segment_hotspot_count} hotspot{s.segment_hotspot_count !== 1 ? "s" : ""}
+                      </p>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </>
@@ -464,7 +476,7 @@ function MLPredictionCard({ prediction }: { prediction: PredictionResult | null 
         <div className="p-3 rounded-xl"
           style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
           <p className="text-[9px] uppercase tracking-wide mb-0.5" style={{ color: "var(--txt-muted)" }}>Hotspot Penalty</p>
-          <p className="text-sm font-bold mono" style={{ color: "var(--txt-primary)" }}>+{(prediction.penalty * 100).toFixed(0)}%</p>
+          <p className="text-sm font-bold mono" style={{ color: "var(--txt-primary)" }}>+{(prediction.hotspot_penalty * 100).toFixed(0)}%</p>
         </div>
       </div>
 

@@ -13,8 +13,9 @@ interface WeatherData {
 interface PredictionResult {
   predicted_risk: number
   hotspot_count: number
+  total_segment_hotspots: number
   severity: string
-  penalty: number
+  hotspot_penalty: number
   final_risk: number
   explanation: string
 }
